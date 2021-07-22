@@ -1,0 +1,15 @@
+[package]
+name = "embedgdb-client"
+version = "0.1.0"
+authors = ["Lukas Krickl <lukas@krickl.dev>"]
+description = "Sample client"
+license = "MIT"
+homepage = "https://github.com/unlink2/"
+edition = "2018"
+
+[[bin]]
+name = "embedgdb"
+path = "src/main.rs"
+
+[dependencies]
+embedgdb = {path = "../lib"}

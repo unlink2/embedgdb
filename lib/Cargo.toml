@@ -1,0 +1,14 @@
+[package]
+name = "embedgdb"
+version = "0.1.0"
+authors = ["Lukas Krickl <lukas@krickl.dev>"]
+description = ""
+license = "MIT"
+homepage = "https://github.com/unlink2/"
+readme = "../README.md"
+
+[lib]
+name = "embedgdb"
+path = "src/lib.rs"
+
+[dependencies]
