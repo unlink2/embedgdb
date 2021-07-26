@@ -11,10 +11,10 @@ pub type OnMemoryFilled<T> = fn(response_data: &[u8], ctx: &mut T) -> bool;
 
 // all supported commands in
 // this stub
-pub enum Commands {
+pub enum Commands<'a, T> {
     Unsupported,
-    Retransmit,
-    Acknowledge
+    Retransmit(Retransmit<'a, T>),
+    Acknowledge(Acknowledge<'a, T>)
 }
 
 

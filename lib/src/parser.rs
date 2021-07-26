@@ -14,9 +14,11 @@ use super::error::Errors;
 /// and the client program can provide a new buffer to write to after handling the current
 /// packet slice
 /// When the response is fully written it will return an Ok
+/// T is a custom context type for the out of memory handler
 pub struct Parser<'a> {
     packet: &'a [u8],
-    current: usize
+    current: usize,
+
 }
 
 impl<'a> Parser<'a> {
@@ -31,7 +33,7 @@ impl<'a> Parser<'a> {
     // $<optional id:>packet-data#checksum
     // if this function causes an error
     // a retransmit packet should be sent
-    pub fn parse(&mut self) -> Result<Commands, Errors> {
+    pub fn parse<T>(&mut self) -> Result<Commands<'a, T>, Errors> {
         // first char needs to be $
         if !self.is_match(b'$') {
             // bail
