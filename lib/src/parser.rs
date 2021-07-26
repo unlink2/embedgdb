@@ -1,5 +1,6 @@
 use super::command::Commands;
 use super::error::Errors;
+use super::arch::Arch;
 
 /// this parser parses the packet on a surface level
 /// and passes on the resulting data to a packet struct
@@ -33,7 +34,8 @@ impl<'a> Parser<'a> {
     // $<optional id:>packet-data#checksum
     // if this function causes an error
     // a retransmit packet should be sent
-    pub fn parse<T>(&mut self) -> Result<Commands<'a, T>, Errors> {
+    pub fn parse<T>(&mut self) -> Result<Commands<'a, T>, Errors>
+    where T: Arch {
         // first char needs to be $
         if !self.is_match(b'$') {
             // bail
