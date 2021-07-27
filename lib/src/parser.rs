@@ -77,6 +77,48 @@ impl<'a> Parser<'a> {
     pub fn parse_checksum(&self) -> &str {
         ""
     }
+
+    pub fn is_digit(b: u8) -> bool {
+        b >= b'0' && b <= b'9'
+    }
+
+    pub fn is_hex(b: u8) -> bool {
+        (b >= b'a' && b <= b'f')
+            || (b >= b'A' && b <= b'F')
+    }
+
+    pub fn is_hex_digit(b: u8) -> bool {
+        Self::is_hex(b) || Self::is_digit(b)
+    }
+
+    pub fn from_hex(b: u8) -> Option<u8> {
+        if b >= b'0' && b <= b'9' {
+            Some(b - b'0')
+        } else if b >= b'A' && b <= b'F' {
+            Some(b - b'A')
+        } else if b >= b'a' && b <= b'f' {
+            Some(b - b'A')
+        } else {
+            None
+        }
+    }
+
+    pub fn to_hex(b: u8) -> Option<u8> {
+        if b > 16 {
+            None
+        } else if b > 9 {
+            Some(b + b'0')
+        } else {
+            Some(b + b'A')
+        }
+    }
+
+    pub fn to_hex_tuple(b: u8) -> (u8, u8) {
+        let h = (b >> 4) & 0xF;
+        let l = b & 0xF;
+        // we can unwrap here because it will always be valid
+        (Self::to_hex(h).unwrap(), Self::to_hex(l).unwrap())
+    }
 }
 
 #[cfg(test)]
