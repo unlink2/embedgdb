@@ -1,11 +1,11 @@
 use super::error::Errors;
-use super::arch::Arch;
+use super::target::Target;
 
 
 // all supported commands in
 // this stub
 pub enum Commands<'a, T>
-where T: Arch {
+where T: Target {
     Unsupported,
     Retransmit(Retransmit<'a, T>),
     Acknowledge(Acknowledge<'a, T>),
@@ -15,7 +15,7 @@ where T: Arch {
 /// tracks the current state
 /// of response writing
 pub struct ResponseState<'a, T>
-where T: Arch {
+where T: Target {
     pub fields: &'a [u8],
     pub current_write: usize,
     pub chksm: u32, // buffer for checksum
@@ -23,7 +23,7 @@ where T: Arch {
 }
 
 impl<'a, T> ResponseState<'a, T>
-where T: Arch {
+where T: Target {
     pub fn new(fields: &'a [u8], ctx: T) -> Self {
         Self {
             fields,
@@ -94,7 +94,7 @@ where T: Arch {
 // general interface all commands
 // should implement
 pub trait Command<T>
-where T: Arch {
+where T: Target {
     /// generates a response for the current command
     /// Returns either an error, or the total amount of bytes written
     /// to the buffer
@@ -102,12 +102,12 @@ where T: Arch {
 }
 
 pub struct Retransmit<'a, T>
-where T: Arch {
+where T: Target {
     state: ResponseState<'a, T>
 }
 
 impl<T> Retransmit<'_, T>
-where T: Arch {
+where T: Target {
     pub fn new(ctx: T) -> Self {
         Self {
             state: ResponseState::new(&[], ctx),
@@ -116,7 +116,7 @@ where T: Arch {
 }
 
 impl<T> Command<T> for Retransmit<'_, T>
-where T: Arch {
+where T: Target {
     fn response(&mut self, response_data: &mut [u8]) -> Result<usize, Errors> {
         self.state.reset_write();
         self.state.write(response_data, b'-')
@@ -124,12 +124,12 @@ where T: Arch {
 }
 
 pub struct Acknowledge<'a, T>
-where T: Arch {
+where T: Target {
     state: ResponseState<'a, T>
 }
 
 impl<T> Acknowledge<'_, T>
-where T: Arch {
+where T: Target {
     pub fn new(ctx: T) -> Self {
         Self {
             state: ResponseState::new(&[], ctx)
@@ -138,7 +138,7 @@ where T: Arch {
 }
 
 impl<T> Command<T> for Acknowledge<'_, T>
-where T: Arch {
+where T: Target {
     fn response(&mut self, response_data: &mut [u8]) -> Result<usize, Errors> {
         self.state.reset_write();
         self.state.write(response_data, b'-')

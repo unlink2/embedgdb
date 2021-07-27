@@ -1,6 +1,6 @@
 use super::command::Commands;
 use super::error::Errors;
-use super::arch::Arch;
+use super::target::Target;
 
 /// this parser parses the packet on a surface level
 /// and passes on the resulting data to a packet struct
@@ -35,7 +35,7 @@ impl<'a> Parser<'a> {
     // if this function causes an error
     // a retransmit packet should be sent
     pub fn parse<T>(&mut self) -> Result<Commands<'a, T>, Errors>
-    where T: Arch {
+    where T: Target {
         // first char needs to be $
         if !self.is_match(b'$') {
             // bail
@@ -104,12 +104,12 @@ impl<'a> Parser<'a> {
     }
 
     pub fn to_hex(b: u8) -> Option<u8> {
-        if b > 16 {
+        if b >= 16 {
             None
-        } else if b > 9 {
+        } else if b <= 9 {
             Some(b + b'0')
         } else {
-            Some(b + b'A')
+            Some(b + b'A' - 10)
         }
     }
 
@@ -124,4 +124,16 @@ impl<'a> Parser<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn it_should_parse_hex() {
+        assert_eq!(Parser::to_hex(15), Some(b'F'));
+        assert_eq!(Parser::to_hex(6), Some(b'6'));
+        assert_eq!(Parser::to_hex(16), None);
+    }
+
+    #[test]
+    fn it_should_parse_hex_tupel() {
+        assert_eq!(Parser::to_hex_tuple(0xA7), (b'A', b'7'));
+    }
 }
