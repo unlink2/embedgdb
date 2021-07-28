@@ -1,6 +1,19 @@
-use super::command::Commands;
+use super::command::*;
 use super::error::Errors;
 use super::target::Target;
+
+pub struct Parsed<'a, T>
+where T: Target {
+    pub response: Commands<'a, T>,
+    pub command: Commands<'a, T>
+}
+
+impl<'a, T> Parsed<'a, T>
+where T: Target {
+    fn new(response: Commands<'a, T>, command: Commands<'a, T>) -> Self {
+        Self {response, command}
+    }
+}
 
 /// this parser parses the packet on a surface level
 /// and passes on the resulting data to a packet struct
@@ -19,7 +32,6 @@ use super::target::Target;
 pub struct Parser<'a> {
     packet: &'a [u8],
     current: usize,
-
 }
 
 impl<'a> Parser<'a> {
@@ -34,7 +46,7 @@ impl<'a> Parser<'a> {
     // $<optional id:>packet-data#checksum
     // if this function causes an error
     // a retransmit packet should be sent
-    pub fn parse<T>(&mut self) -> Result<Commands<'a, T>, Errors>
+    pub fn parse<T>(&mut self, ctx: T) -> Result<Parsed<T>, Errors>
     where T: Target {
         // first char needs to be $
         if !self.is_match(b'$') {
@@ -42,9 +54,28 @@ impl<'a> Parser<'a> {
             return Err(Errors::UnexpectedIntroduction);
         }
 
+        // read packet name
 
+        // read rest of data, those will be parsed when the packet is interpreted/executed
 
-        Ok(Commands::Unsupported)
+        // read end-delim
+        if !self.is_match(b'#') {
+            // retransmit - the packet never terminated!
+            return Ok(Parsed::new(
+                    Commands::Retransmit(Retransmit::new(ctx)),
+                    Commands::NoCommand));
+        }
+
+        // is checksum ok?
+        if !self.verify_chksm(self.packet) {
+            return Ok(Parsed::new(
+                    Commands::Retransmit(Retransmit::new(ctx)),
+                    Commands::NoCommand));
+        }
+
+        Ok(Parsed::new(
+                Commands::NotImplemented(NotImplemented::new(ctx)),
+                Commands::NoCommand))
     }
 
     pub fn advance(&mut self) -> u8 {
@@ -70,12 +101,29 @@ impl<'a> Parser<'a> {
     }
 
     // verifies that checksum is ok
-    pub fn checksum(&self, cs: &[u8]) -> bool {
+    pub fn verify_chksm(&self, cs: &[u8]) -> bool {
         false
     }
 
-    pub fn parse_checksum(&self) -> &str {
-        ""
+    // adds a buffe rto chksm
+    pub fn chksm(response_data: &mut [u8]) -> u32 {
+        // never include $ and # in checksum. -> this is fine because they always need
+        // to be escaped anyway so in a well-formed packet they should always appear at the
+        // start/end
+        let mut chksm = 0;
+        for b in response_data {
+            match *b {
+                b'$' | b'#' => (),
+                _ => chksm += *b as u32
+            }
+        }
+
+        chksm
+    }
+
+    pub fn parse_checksum(&self) -> &[u8] {
+
+        b""
     }
 
     pub fn is_digit(b: u8) -> bool {

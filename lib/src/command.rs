@@ -1,12 +1,15 @@
 use super::error::Errors;
 use super::target::Target;
+use super::parser::Parser;
 
 
 // all supported commands in
 // this stub
 pub enum Commands<'a, T>
 where T: Target {
+    NoCommand,
     Unsupported,
+    NotImplemented(NotImplemented<'a, T>),
     Retransmit(Retransmit<'a, T>),
     Acknowledge(Acknowledge<'a, T>),
 }
@@ -38,18 +41,6 @@ where T: Target {
         self.chksm = 0;
     }
 
-    // adds a buffe rto chksm
-    fn add_chksm(&mut self, response_data: &mut [u8]) {
-        // never include $ and # in checksum. -> this is fine because they always need
-        // to be escaped anyway so in a well-formed packet they should always appear at the
-        // start/end
-        for b in response_data {
-            match *b {
-                b'$' | b'#' => (),
-                _ => self.chksm += *b as u32
-            }
-        }
-    }
 
     // starts a packet
     pub fn start(&mut self, response_data: &mut [u8]) -> Result<usize, Errors> {
@@ -60,7 +51,7 @@ where T: Target {
     pub fn end(&mut self, response_data: &mut [u8]) -> Result<usize, Errors> {
         self.write(response_data, b'#')?;
 
-        self.add_chksm(response_data);
+        self.chksm += Parser::chksm(response_data);
         // write checksum byte
         let chksum = (self.chksm % 256) as u8;
 
@@ -76,7 +67,7 @@ where T: Target {
     pub fn write(&mut self, response_data: &mut [u8], byte: u8) -> Result<usize, Errors> {
         if response_data.len() < self.current_write+1 {
             // do not clear before adding bytes to checksum,
-            self.add_chksm(response_data);
+            Parser::chksm(response_data);
 
             // attempt to handle memory fill
             if !self.ctx.on_mem_filled(response_data) {
@@ -101,6 +92,10 @@ where T: Target {
     fn response(&mut self, response_data: &mut [u8]) -> Result<usize, Errors>;
 }
 
+/**
+ * Retransmit
+ */
+
 pub struct Retransmit<'a, T>
 where T: Target {
     state: ResponseState<'a, T>
@@ -123,6 +118,10 @@ where T: Target {
     }
 }
 
+/**
+ * Acknowledge
+ */
+
 pub struct Acknowledge<'a, T>
 where T: Target {
     state: ResponseState<'a, T>
@@ -142,5 +141,32 @@ where T: Target {
     fn response(&mut self, response_data: &mut [u8]) -> Result<usize, Errors> {
         self.state.reset_write();
         self.state.write(response_data, b'-')
+    }
+}
+
+/**
+ * Not implemented
+ */
+
+pub struct NotImplemented<'a, T>
+where T: Target {
+    state: ResponseState<'a, T>
+}
+
+impl<T> NotImplemented<'_, T>
+where T: Target {
+    pub fn new(ctx: T) -> Self {
+        Self {
+            state: ResponseState::new(&[], ctx)
+        }
+    }
+}
+
+impl<T> Command<T> for NotImplemented<'_, T>
+where T: Target {
+    fn response(&mut self, response_data: &mut [u8]) -> Result<usize, Errors> {
+        self.state.reset_write();
+        self.state.start(response_data)?;
+        self.state.end(response_data)
     }
 }
