@@ -2,15 +2,18 @@ use super::command::*;
 use super::error::Errors;
 use super::target::Target;
 
+// Holds the Acknowledge Packet and command packet
+
+#[derive(Debug, PartialEq)]
 pub struct Parsed<'a, T>
 where T: Target {
-    pub response: Commands<'a, T>,
-    pub command: Commands<'a, T>
+    pub response: Option<Commands<'a, T>>,
+    pub command: Option<Commands<'a, T>>
 }
 
 impl<'a, T> Parsed<'a, T>
 where T: Target {
-    fn new(response: Commands<'a, T>, command: Commands<'a, T>) -> Self {
+    fn new(response: Option<Commands<'a, T>>, command: Option<Commands<'a, T>>) -> Self {
         Self {response, command}
     }
 }
@@ -42,40 +45,81 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn retransmit<T>(ctx: T, error: Errors) -> Parsed<'a, T>
+    where T: Target {
+        Parsed::new(
+            Some(Commands::Retransmit(Retransmit::new(ctx, error))), None)
+    }
+
+    fn not_implemented<T>(ctx: T) -> Parsed<'a, T>
+    where T: Target {
+        Parsed::new(
+            Some(Commands::Acknowledge(Acknowledge::new(ctx.clone()))),
+            Some(Commands::NotImplemented(NotImplemented::new(ctx))))
+    }
+
     // packet layout:
     // $<optional id:>packet-data#checksum
     // if this function causes an error
     // a retransmit packet should be sent
-    pub fn parse<T>(&mut self, ctx: T) -> Result<Parsed<T>, Errors>
+    pub fn parse_packet<T>(&mut self, ctx: T) -> Parsed<T>
     where T: Target {
         // first char needs to be $
         if !self.is_match(b'$') {
             // bail
-            return Err(Errors::UnexpectedIntroduction);
+            return Self::retransmit(ctx, Errors::UnexpectedIntroduction);
         }
 
         // read packet name
+        // packet names either are terminated by #, space, comma or semicolon
+        let name = self.parse_token();
 
         // read rest of data, those will be parsed when the packet is interpreted/executed
+        let _ = self.parse_until_end();
 
         // read end-delim
         if !self.is_match(b'#') {
             // retransmit - the packet never terminated!
-            return Ok(Parsed::new(
-                    Commands::Retransmit(Retransmit::new(ctx)),
-                    Commands::NoCommand));
+            return Self::retransmit(ctx, Errors::NotTerminated);
         }
 
         // is checksum ok?
         if !self.verify_chksm(self.packet) {
-            return Ok(Parsed::new(
-                    Commands::Retransmit(Retransmit::new(ctx)),
-                    Commands::NoCommand));
+            return Self::retransmit(ctx, Errors::InvalidChecksum);
         }
 
-        Ok(Parsed::new(
-                Commands::NotImplemented(NotImplemented::new(ctx)),
-                Commands::NoCommand))
+        match name {
+            _ => Self::not_implemented(ctx)
+        }
+    }
+
+    pub fn parse_token(&mut self) -> &'a [u8] {
+        let start = self.current;
+        while !self.is_at_end()
+            && !self.is_term() {
+            self.advance();
+        }
+        &self.packet[start..self.current]
+    }
+
+    pub fn parse_until_end(&mut self) -> &'a [u8] {
+        let start = self.current;
+        while !self.is_match(b'#')
+            && !self.is_at_end() {
+            self.advance();
+        }
+        &self.packet[start..self.current]
+    }
+
+    pub fn is_term(&self) -> bool {
+        match self.peek() {
+            b' ' | b',' | b'#' | b';' => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_at_end(&self) -> bool {
+        self.current > self.packet.len()
     }
 
     pub fn advance(&mut self) -> u8 {
@@ -101,29 +145,50 @@ impl<'a> Parser<'a> {
     }
 
     // verifies that checksum is ok
-    pub fn verify_chksm(&self, cs: &[u8]) -> bool {
-        false
+    pub fn verify_chksm(&mut self, cs: &[u8]) -> bool {
+        // read next 2 bytes
+        let b0 = Self::from_hex(self.advance());
+        let b1 = Self::from_hex(self.advance());
+
+        if let (Some(b0), Some(b1)) = (b0, b1) {
+            let n0 = Self::from_hex(b0);
+            let n1 = Self::from_hex(b1);
+
+            if let (Some(n0), Some(n1)) = (n0, n1) {
+                // now we have a sum, calculate based on data and see!
+                let sum = (n1 << 4) & n0;
+
+                let calc = Self::chksm8(self.packet);
+
+                sum != calc
+            } else {
+                false
+            }
+        } else {
+            // in all other cases bail with bad checksum!
+            false
+        }
     }
 
     // adds a buffe rto chksm
-    pub fn chksm(response_data: &mut [u8]) -> u32 {
+    pub fn chksm(response_data: &[u8]) -> u32 {
         // never include $ and # in checksum. -> this is fine because they always need
         // to be escaped anyway so in a well-formed packet they should always appear at the
         // start/end
         let mut chksm = 0;
-        for b in response_data {
+        'cloop: for b in response_data {
             match *b {
-                b'$' | b'#' => (),
+                b'$' => (),
+                b'#' => break 'cloop,
                 _ => chksm += *b as u32
             }
         }
 
-        chksm
+        chksm % 256
     }
 
-    pub fn parse_checksum(&self) -> &[u8] {
-
-        b""
+    pub fn chksm8(response_data: &[u8]) -> u8 {
+        (Self::chksm(response_data) % 256) as u8
     }
 
     pub fn is_digit(b: u8) -> bool {
@@ -173,6 +238,14 @@ impl<'a> Parser<'a> {
 mod tests {
     use super::*;
 
+    #[derive(Debug, Clone, PartialEq)]
+    struct TestCtx;
+    impl Target for TestCtx {
+        fn on_mem_filled(&mut self, response_data: &[u8]) -> bool {
+            false
+        }
+    }
+
     #[test]
     fn it_should_parse_hex() {
         assert_eq!(Parser::to_hex(15), Some(b'F'));
@@ -183,5 +256,20 @@ mod tests {
     #[test]
     fn it_should_parse_hex_tupel() {
         assert_eq!(Parser::to_hex_tuple(0xA7), (b'A', b'7'));
+    }
+
+    #[test]
+    fn it_should_parse_packet() {
+        let chksm = "$vMustReplyEmpty#3a".as_bytes();
+
+        let mut parser = Parser::new(chksm);
+        let ctx = TestCtx;
+
+        // must reply empty should reply with an empty packet!
+        let parsed = parser.parse_packet(ctx.clone());
+
+        assert_eq!(parsed, Parsed::new(
+            Some(Commands::Acknowledge(Acknowledge::new(ctx.clone()))),
+            Some(Commands::NotImplemented(NotImplemented::new(ctx)))));
     }
 }

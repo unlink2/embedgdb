@@ -1,6 +1,6 @@
 /// This is the cpu architecture specific
 /// response data and io handling
-pub trait Target {
+pub trait Target: Clone + PartialEq {
     /// This function is called whenever the provided memory buffer
     /// is not sufficient
     /// it allows the handling of the memory buffer;

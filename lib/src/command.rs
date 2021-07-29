@@ -5,6 +5,7 @@ use super::parser::Parser;
 
 // all supported commands in
 // this stub
+#[derive(Debug, PartialEq)]
 pub enum Commands<'a, T>
 where T: Target {
     NoCommand,
@@ -17,6 +18,7 @@ where T: Target {
 
 /// tracks the current state
 /// of response writing
+#[derive(Debug, PartialEq)]
 pub struct ResponseState<'a, T>
 where T: Target {
     pub fields: &'a [u8],
@@ -96,16 +98,19 @@ where T: Target {
  * Retransmit
  */
 
+#[derive(Debug, PartialEq)]
 pub struct Retransmit<'a, T>
 where T: Target {
-    state: ResponseState<'a, T>
+    state: ResponseState<'a, T>,
+    error: Errors
 }
 
 impl<T> Retransmit<'_, T>
 where T: Target {
-    pub fn new(ctx: T) -> Self {
+    pub fn new(ctx: T, error: Errors) -> Self {
         Self {
             state: ResponseState::new(&[], ctx),
+            error
         }
     }
 }
@@ -122,6 +127,7 @@ where T: Target {
  * Acknowledge
  */
 
+#[derive(Debug, PartialEq)]
 pub struct Acknowledge<'a, T>
 where T: Target {
     state: ResponseState<'a, T>
@@ -148,6 +154,7 @@ where T: Target {
  * Not implemented
  */
 
+#[derive(Debug, PartialEq)]
 pub struct NotImplemented<'a, T>
 where T: Target {
     state: ResponseState<'a, T>
@@ -170,3 +177,4 @@ where T: Target {
         self.state.end(response_data)
     }
 }
+
