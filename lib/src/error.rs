@@ -5,4 +5,5 @@ pub enum Errors {
     NotTerminated,
     InvalidChecksum,
     UnexpectedIntroduction,
+    CommandError
 }

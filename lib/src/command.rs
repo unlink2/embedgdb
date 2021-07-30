@@ -1,7 +1,7 @@
 use super::error::Errors;
 use super::target::Target;
 use super::parser::{Parsed, Parser};
-
+use super::basic::required::*;
 
 // This trait builds a command based on the parer's output
 // this allows each target platform to specify exactly which commands
@@ -89,26 +89,53 @@ where T: Target {
 
     // starts a packet
     pub fn start(&mut self, response_data: &mut [u8]) -> Result<usize, Errors> {
-        self.write(response_data, b'$')
+        self.write_force(response_data, b'$')
     }
 
     // ends a packet
     pub fn end(&mut self, response_data: &mut [u8]) -> Result<usize, Errors> {
-        self.write(response_data, b'#')?;
+        let mut size = self.write_force(response_data, b'#')?;
 
         self.chksm += Parser::add_chksm(response_data);
         // write checksum byte
         let chksum = Parser::to_hex_tuple((self.chksm % 256) as u8);
 
-        self.write(response_data, chksum.0)?;
-        self.write(response_data, chksum.1)
+        size += self.write_force(response_data, chksum.0)?;
+        size += self.write_force(response_data, chksum.1)?;
+        Ok(size)
     }
 
-    pub fn escape(&mut self, response_data: &mut [u8], byte: u8) -> Result<usize, Errors> {
-        todo!()
+    pub fn ok(&mut self, response_data: &mut [u8]) -> Result<usize, Errors> {
+        self.write_all(response_data, b"OK")
     }
 
-    pub fn write(&mut self, response_data: &mut [u8], byte: u8) -> Result<usize, Errors> {
+    pub fn error(&mut self, response_data: &mut [u8], _error: Errors) -> Result<usize, Errors> {
+        // TODO write error code
+        self.write_all(response_data, b"E 00")
+    }
+
+    pub fn escape(byte: u8) -> u8 {
+        byte ^ 0x20
+    }
+
+    pub fn write_escape(&mut self, response_data: &mut [u8], byte: u8) -> Result<usize, Errors> {
+        let mut size = self.write_force(response_data, b'}')?;
+        size += self.write(response_data, Self::escape(byte))?;
+
+        Ok(size)
+    }
+
+    pub fn write_all(&mut self, response_data: &mut [u8], bytes: &[u8]) -> Result<usize, Errors> {
+        let mut size = 0;
+        for byte in bytes {
+            size += self.write(response_data, *byte)?;
+        }
+        Ok(size)
+    }
+
+    /// forces the write of a byte even if it would normally be escaped
+    pub fn write_force(&mut self, response_data: &mut [u8], byte: u8) -> Result<usize, Errors> {
+        let start = self.current_write;
         if response_data.len() < self.current_write+1 {
             // do not clear before adding bytes to checksum,
             self.chksm += Parser::add_chksm(response_data);
@@ -122,7 +149,19 @@ where T: Target {
         }
         response_data[self.current_write] = byte;
         self.current_write += 1;
-        Ok(self.current_write)
+        Ok(self.current_write-start)
+    }
+
+    pub fn write(&mut self, response_data: &mut [u8], byte: u8) -> Result<usize, Errors> {
+        match byte {
+            // those bytes must always be escaped!
+            b'}' | b'$' | b'#' | b'*' => {
+                self.write_escape(response_data, byte)
+            },
+            _ => {
+                self.write_force(response_data, byte)
+            }
+        }
     }
 }
 
@@ -205,8 +244,57 @@ impl<T> Command<T> for NotImplemented<'_, T>
 where T: Target {
     fn response(&mut self, response_data: &mut [u8]) -> Result<usize, Errors> {
         self.state.reset_write();
-        self.state.start(response_data)?;
-        self.state.end(response_data)
+        let mut size = self.state.start(response_data)?;
+        size += self.state.end(response_data)?;
+        Ok(size)
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct TestCommands;
+    impl<'a, T> SupportedCommands<'a, T> for TestCommands
+            where T: Target {}
+
+    #[derive(Debug, Clone, PartialEq)]
+    struct TestCtx;
+    impl Target for TestCtx {
+        fn buffer_full(&mut self, response_data: &[u8]) -> bool {
+            false
+        }
+    }
+
+    #[test]
+    fn it_should_write_data() {
+        let mut cmd = Commands::NotImplemented(NotImplemented::new(TestCtx));
+        let mut buffer = [0; 4];
+
+        let size = cmd.response(&mut buffer).unwrap();
+
+        assert_eq!(size, 4);
+        assert_eq!(&buffer, b"$#00");
+    }
+
+    #[test]
+    fn it_should_escape_data() {
+        let mut buffer = [0; 4];
+        let mut state = ResponseState::new(&[], TestCtx);
+
+        let mut size = state.write(&mut buffer, b'$').unwrap();
+        size += state.write(&mut buffer, b'B').unwrap();
+
+        assert_eq!(size, 3);
+        assert_eq!(&buffer, &[b'}', 4, b'B', 0]);
+    }
+
+    #[test]
+    fn it_should_fail_if_resize_is_not_possible() {
+        let mut buffer = [0; 4];
+        let mut state = ResponseState::new(&[], TestCtx);
+
+        let err = state.write_all(&mut buffer, b"Hello").unwrap_err();
+        assert_eq!(err, Errors::MemoryFilledInterupt);
+    }
+}
