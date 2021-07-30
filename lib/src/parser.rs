@@ -32,6 +32,7 @@ where T: Target {
 /// packet slice
 /// When the response is fully written it will return an Ok
 /// T is a custom context type for the out of memory handler
+#[derive(Clone)]
 pub struct Parser<'a> {
     packet: &'a [u8],
     current: usize,
@@ -64,6 +65,13 @@ impl<'a> Parser<'a> {
     // a retransmit packet should be sent
     pub fn parse_packet<T>(&mut self, ctx: T) -> Parsed<T>
     where T: Target {
+        // there are 2 special cases where there is no checksum
+        if self.is_match(b'-') {
+            return Parsed::new(Some(Commands::RetransmitLast), None);
+        } else if self.is_match(b'+')  {
+            return Parsed::new(Some(Commands::AcknowledgeLast), None);
+        }
+
         // first char needs to be $
         if !self.is_match(b'$') {
             // bail
@@ -74,17 +82,21 @@ impl<'a> Parser<'a> {
         // packet names either are terminated by #, space, comma or semicolon
         let name = self.parse_token();
 
-        // read rest of data, those will be parsed when the packet is interpreted/executed
-        let _ = self.parse_until_end();
+        // only if not #
+        if self.peek() != b'#' {
+            self.advance(); // must be other terminator, skip it
+            // read rest of data, those will be parsed when the packet is interpreted/executed
+            let _ = self.parse_until_end();
+        }
 
         // read end-delim
         if !self.is_match(b'#') {
             // retransmit - the packet never terminated!
             return Self::retransmit(ctx, Errors::NotTerminated);
         }
-
+        let c = self.peek();
         // is checksum ok?
-        if !self.verify_chksm(self.packet) {
+        if !self.verify_chksm() {
             return Self::retransmit(ctx, Errors::InvalidChecksum);
         }
 
@@ -93,6 +105,8 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// parses a single token
+    /// and returns a slice containing it
     pub fn parse_token(&mut self) -> &'a [u8] {
         let start = self.current;
         while !self.is_at_end()
@@ -102,9 +116,12 @@ impl<'a> Parser<'a> {
         &self.packet[start..self.current]
     }
 
+    // parse all remaining tokens into a single slice
+    // because we do not have dynamic memory tokens have to be read
+    // parsed in a later step
     pub fn parse_until_end(&mut self) -> &'a [u8] {
         let start = self.current;
-        while !self.is_match(b'#')
+        while self.peek() != b'#'
             && !self.is_at_end() {
             self.advance();
         }
@@ -113,13 +130,13 @@ impl<'a> Parser<'a> {
 
     pub fn is_term(&self) -> bool {
         match self.peek() {
-            b' ' | b',' | b'#' | b';' => true,
+            b' ' | b',' | b'#' | b';' | b':' => true,
             _ => false,
         }
     }
 
     pub fn is_at_end(&self) -> bool {
-        self.current > self.packet.len()
+        self.current >= self.packet.len()-1
     }
 
     pub fn advance(&mut self) -> u8 {
@@ -145,50 +162,40 @@ impl<'a> Parser<'a> {
     }
 
     // verifies that checksum is ok
-    pub fn verify_chksm(&mut self, cs: &[u8]) -> bool {
+    pub fn verify_chksm(&mut self) -> bool {
         // read next 2 bytes
-        let b0 = Self::from_hex(self.advance());
+        let b0 = Self::from_hex(self.peek());
         let b1 = Self::from_hex(self.advance());
 
         if let (Some(b0), Some(b1)) = (b0, b1) {
-            let n0 = Self::from_hex(b0);
-            let n1 = Self::from_hex(b1);
-
-            if let (Some(n0), Some(n1)) = (n0, n1) {
-                // now we have a sum, calculate based on data and see!
-                let sum = (n1 << 4) & n0;
-
-                let calc = Self::chksm8(self.packet);
-
-                sum != calc
-            } else {
-                false
-            }
+            // now we have a sum, calculate based on data and see!
+            let sum = (b0 << 4) | b1;
+            let calc = Self::chksm(self.packet) as u8;
+            sum == calc
         } else {
             // in all other cases bail with bad checksum!
             false
         }
     }
 
-    // adds a buffe rto chksm
-    pub fn chksm(response_data: &[u8]) -> u32 {
+    pub fn add_chksm(response_data: &[u8]) -> u32 {
         // never include $ and # in checksum. -> this is fine because they always need
         // to be escaped anyway so in a well-formed packet they should always appear at the
         // start/end
-        let mut chksm = 0;
+        let mut sum = 0;
         'cloop: for b in response_data {
             match *b {
                 b'$' => (),
                 b'#' => break 'cloop,
-                _ => chksm += *b as u32
+                _ => sum += *b as u32
             }
         }
-
-        chksm % 256
+        return sum;
     }
 
-    pub fn chksm8(response_data: &[u8]) -> u8 {
-        (Self::chksm(response_data) % 256) as u8
+    // adds a buffe rto chksm
+    pub fn chksm(response_data: &[u8]) -> u32 {
+        Self::add_chksm(response_data) % 256
     }
 
     pub fn is_digit(b: u8) -> bool {
@@ -208,9 +215,9 @@ impl<'a> Parser<'a> {
         if b >= b'0' && b <= b'9' {
             Some(b - b'0')
         } else if b >= b'A' && b <= b'F' {
-            Some(b - b'A')
+            Some(b - b'A' + 10)
         } else if b >= b'a' && b <= b'f' {
-            Some(b - b'A')
+            Some(b - b'a' + 10)
         } else {
             None
         }
@@ -222,7 +229,7 @@ impl<'a> Parser<'a> {
         } else if b <= 9 {
             Some(b + b'0')
         } else {
-            Some(b + b'A' - 10)
+            Some(b + b'a' - 10)
         }
     }
 
@@ -241,21 +248,26 @@ mod tests {
     #[derive(Debug, Clone, PartialEq)]
     struct TestCtx;
     impl Target for TestCtx {
-        fn on_mem_filled(&mut self, response_data: &[u8]) -> bool {
+        fn buffer_full(&mut self, response_data: &[u8]) -> bool {
             false
         }
     }
 
     #[test]
     fn it_should_parse_hex() {
-        assert_eq!(Parser::to_hex(15), Some(b'F'));
+        assert_eq!(Parser::to_hex(15), Some(b'f'));
         assert_eq!(Parser::to_hex(6), Some(b'6'));
         assert_eq!(Parser::to_hex(16), None);
     }
 
     #[test]
     fn it_should_parse_hex_tupel() {
-        assert_eq!(Parser::to_hex_tuple(0xA7), (b'A', b'7'));
+        assert_eq!(Parser::to_hex_tuple(0xA7), (b'a', b'7'));
+    }
+
+    #[test]
+    fn it_should_calculate_checksums() {
+        assert_eq!(Parser::chksm(b"$vMustReplyEmpty#3a"), 0x3a);
     }
 
     #[test]
@@ -271,5 +283,41 @@ mod tests {
         assert_eq!(parsed, Parsed::new(
             Some(Commands::Acknowledge(Acknowledge::new(ctx.clone()))),
             Some(Commands::NotImplemented(NotImplemented::new(ctx)))));
+    }
+
+    #[test]
+    fn it_should_parse_to_end() {
+        let chksm = "$vMustReplyEmpty#3a".as_bytes();
+
+        let mut parser = Parser::new(chksm);
+        let ctx = TestCtx;
+
+        // must reply empty should reply with an empty packet!
+        let _ = parser.parse_packet(ctx.clone());
+
+        assert!(parser.is_at_end());
+    }
+
+    #[test]
+    fn it_should_parse_long_packet() {
+        let packet = "$qSupported:multiprocess+;swbreak+;hwbreak+;qRelocInsn+;fork-events+;vfork-events+;exec-events+;vContSupported+;QThreadEvents+;no-resumed+;xmlRegisters=i386#6a".as_bytes();
+        let mut parser = Parser::new(packet);
+        let ctx = TestCtx;
+
+        let parsed = parser.parse_packet(ctx.clone());
+
+        assert_eq!(parsed, Parsed::new(
+            Some(Commands::Acknowledge(Acknowledge::new(ctx.clone()))),
+            Some(Commands::NotImplemented(NotImplemented::new(ctx)))));
+    }
+
+    #[test]
+    fn it_should_parse_to_end_long_packet() {
+        let packet = "$qSupported:multiprocess+;swbreak+;hwbreak+;qRelocInsn+;fork-events+;vfork-events+;exec-events+;vContSupported+;QThreadEvents+;no-resumed+;xmlRegisters=i386#6a".as_bytes();
+        let mut parser = Parser::new(packet);
+        let ctx = TestCtx;
+
+        let _ = parser.parse_packet(ctx.clone());
+        assert!(parser.is_at_end());
     }
 }

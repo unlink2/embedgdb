@@ -8,5 +8,5 @@ pub trait Target: Clone + PartialEq {
     /// or false to abort and attempt with a larger buffer
     /// T is used to provide a custom context for handling the data
     /// this can be nearly any object
-    fn on_mem_filled(&mut self, response_data: &[u8]) -> bool;
+    fn buffer_full(&mut self, response_data: &[u8]) -> bool;
 }

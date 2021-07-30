@@ -10,11 +10,37 @@ pub enum Commands<'a, T>
 where T: Target {
     NoCommand,
     Unsupported,
+    RetransmitLast, // this is returned if the packet received is a -
+    AcknowledgeLast, // this is returned if the packet received a +
     NotImplemented(NotImplemented<'a, T>),
     Retransmit(Retransmit<'a, T>),
     Acknowledge(Acknowledge<'a, T>),
 }
 
+impl<T> Command<T> for Commands<'_, T>
+where T: Target {
+    fn response(&mut self, response_data: &mut [u8]) -> Result<usize, Errors> {
+        match self {
+            Self::NoCommand
+                | Self::Unsupported
+                | Self::RetransmitLast
+                | Self::AcknowledgeLast => Ok(0),
+            Self::NotImplemented(c) => c.response(response_data),
+            Self::Retransmit(c) => c.response(response_data),
+            Self::Acknowledge(c) => c.response(response_data)
+        }
+    }
+}
+
+// general interface all commands
+// should implement
+pub trait Command<T>
+where T: Target {
+    /// generates a response for the current command
+    /// Returns either an error, or the total amount of bytes written
+    /// to the buffer
+    fn response(&mut self, response_data: &mut [u8]) -> Result<usize, Errors>;
+}
 
 /// tracks the current state
 /// of response writing
@@ -53,13 +79,12 @@ where T: Target {
     pub fn end(&mut self, response_data: &mut [u8]) -> Result<usize, Errors> {
         self.write(response_data, b'#')?;
 
-        self.chksm += Parser::chksm(response_data);
+        self.chksm += Parser::add_chksm(response_data);
         // write checksum byte
-        let chksum = (self.chksm % 256) as u8;
+        let chksum = Parser::to_hex_tuple((self.chksm % 256) as u8);
 
-        // TODO hex digit converter!
-        self.write(response_data, (chksum & 0xF0) >> 4)?;
-        self.write(response_data, chksum & 0x0F)
+        self.write(response_data, chksum.0)?;
+        self.write(response_data, chksum.1)
     }
 
     pub fn escape(&mut self, response_data: &mut [u8], byte: u8) -> Result<usize, Errors> {
@@ -69,10 +94,10 @@ where T: Target {
     pub fn write(&mut self, response_data: &mut [u8], byte: u8) -> Result<usize, Errors> {
         if response_data.len() < self.current_write+1 {
             // do not clear before adding bytes to checksum,
-            Parser::chksm(response_data);
+            self.chksm += Parser::add_chksm(response_data);
 
             // attempt to handle memory fill
-            if !self.ctx.on_mem_filled(response_data) {
+            if !self.ctx.buffer_full(response_data) {
                 return Err(Errors::MemoryFilledInterupt);
             } else {
                 self.current_write = 0;
@@ -82,16 +107,6 @@ where T: Target {
         self.current_write += 1;
         Ok(self.current_write)
     }
-}
-
-// general interface all commands
-// should implement
-pub trait Command<T>
-where T: Target {
-    /// generates a response for the current command
-    /// Returns either an error, or the total amount of bytes written
-    /// to the buffer
-    fn response(&mut self, response_data: &mut [u8]) -> Result<usize, Errors>;
 }
 
 /**
@@ -146,7 +161,7 @@ impl<T> Command<T> for Acknowledge<'_, T>
 where T: Target {
     fn response(&mut self, response_data: &mut [u8]) -> Result<usize, Errors> {
         self.state.reset_write();
-        self.state.write(response_data, b'-')
+        self.state.write(response_data, b'+')
     }
 }
 
