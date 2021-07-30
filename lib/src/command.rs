@@ -1,7 +1,24 @@
 use super::error::Errors;
 use super::target::Target;
-use super::parser::Parser;
+use super::parser::{Parsed, Parser};
 
+
+// This trait builds a command based on the parer's output
+// this allows each target platform to specify exactly which commands
+// are supported.
+// should return not implemented command by default!
+// There will be a few sample implementations of this function
+pub trait SupportedCommands<'a, T>
+where T: Target {
+    fn commands(&self, ctx: T, name: &'a [u8], args: Option<&'a [u8]>) -> Parsed<T> {
+        match name {
+            _ =>
+                Parsed::new(
+                    Some(Commands::Acknowledge(Acknowledge::new(ctx.clone()))),
+                    Some(Commands::NotImplemented(NotImplemented::new(ctx))))
+        }
+    }
+}
 
 // all supported commands in
 // this stub

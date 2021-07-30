@@ -13,7 +13,7 @@ where T: Target {
 
 impl<'a, T> Parsed<'a, T>
 where T: Target {
-    fn new(response: Option<Commands<'a, T>>, command: Option<Commands<'a, T>>) -> Self {
+    pub fn new(response: Option<Commands<'a, T>>, command: Option<Commands<'a, T>>) -> Self {
         Self {response, command}
     }
 }
@@ -52,18 +52,11 @@ impl<'a> Parser<'a> {
             Some(Commands::Retransmit(Retransmit::new(ctx, error))), None)
     }
 
-    fn not_implemented<T>(ctx: T) -> Parsed<'a, T>
-    where T: Target {
-        Parsed::new(
-            Some(Commands::Acknowledge(Acknowledge::new(ctx.clone()))),
-            Some(Commands::NotImplemented(NotImplemented::new(ctx))))
-    }
-
     // packet layout:
     // $<optional id:>packet-data#checksum
     // if this function causes an error
     // a retransmit packet should be sent
-    pub fn parse_packet<T>(&mut self, ctx: T) -> Parsed<T>
+    pub fn parse_packet<T>(&mut self, ctx: T, cmds: &'a dyn SupportedCommands<'a, T>) -> Parsed<'a, T>
     where T: Target {
         // there are 2 special cases where there is no checksum
         if self.is_match(b'-') {
@@ -83,26 +76,25 @@ impl<'a> Parser<'a> {
         let name = self.parse_token();
 
         // only if not #
-        if self.peek() != b'#' {
+        let args = if self.peek() != b'#' {
             self.advance(); // must be other terminator, skip it
             // read rest of data, those will be parsed when the packet is interpreted/executed
-            let _ = self.parse_until_end();
-        }
+            Some(self.parse_until_end())
+        } else {
+            None
+        };
 
         // read end-delim
         if !self.is_match(b'#') {
             // retransmit - the packet never terminated!
             return Self::retransmit(ctx, Errors::NotTerminated);
         }
-        let c = self.peek();
         // is checksum ok?
         if !self.verify_chksm() {
             return Self::retransmit(ctx, Errors::InvalidChecksum);
         }
 
-        match name {
-            _ => Self::not_implemented(ctx)
-        }
+        cmds.commands(ctx, name, args)
     }
 
     /// parses a single token
@@ -245,6 +237,10 @@ impl<'a> Parser<'a> {
 mod tests {
     use super::*;
 
+    struct TestCommands;
+    impl<'a, T> SupportedCommands<'a, T> for TestCommands
+            where T: Target {}
+
     #[derive(Debug, Clone, PartialEq)]
     struct TestCtx;
     impl Target for TestCtx {
@@ -278,7 +274,7 @@ mod tests {
         let ctx = TestCtx;
 
         // must reply empty should reply with an empty packet!
-        let parsed = parser.parse_packet(ctx.clone());
+        let parsed = parser.parse_packet(ctx.clone(), &TestCommands);
 
         assert_eq!(parsed, Parsed::new(
             Some(Commands::Acknowledge(Acknowledge::new(ctx.clone()))),
@@ -293,7 +289,7 @@ mod tests {
         let ctx = TestCtx;
 
         // must reply empty should reply with an empty packet!
-        let _ = parser.parse_packet(ctx.clone());
+        let _ = parser.parse_packet(ctx.clone(), &TestCommands);
 
         assert!(parser.is_at_end());
     }
@@ -304,7 +300,7 @@ mod tests {
         let mut parser = Parser::new(packet);
         let ctx = TestCtx;
 
-        let parsed = parser.parse_packet(ctx.clone());
+        let parsed = parser.parse_packet(ctx.clone(), &TestCommands);
 
         assert_eq!(parsed, Parsed::new(
             Some(Commands::Acknowledge(Acknowledge::new(ctx.clone()))),
@@ -317,7 +313,7 @@ mod tests {
         let mut parser = Parser::new(packet);
         let ctx = TestCtx;
 
-        let _ = parser.parse_packet(ctx.clone());
+        let _ = parser.parse_packet(ctx.clone(), &TestCommands);
         assert!(parser.is_at_end());
     }
 }
