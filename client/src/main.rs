@@ -5,8 +5,7 @@ use embedgdb::target::Target;
 use embedgdb::stream::BufferedStream;
 
 struct DebugCommands;
-impl<'a, T> SupportedCommands<'a, T> for DebugCommands
-where T: Target {
+impl<'a> SupportedCommands<'a> for DebugCommands {
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -29,7 +28,7 @@ fn handle(mut stream: TcpStream) -> std::io::Result<()> {
 
                 if let Some(mut response) = result.response {
                     let mut rstream = BufferedStream::new();
-                    let size = response.response(&mut rstream).unwrap_or(0);
+                    let size = response.response(&mut rstream, &mut DebugCtx).unwrap_or(0);
 
                     println!("{} {:?} res >> {}", size, response, std::str::from_utf8(&rstream.buffer).unwrap_or(""));
                     if size > 0 {
@@ -39,7 +38,7 @@ fn handle(mut stream: TcpStream) -> std::io::Result<()> {
 
                 if let Some(mut command) = result.command {
                     let mut rstream = BufferedStream::new();
-                    let size = command.response(&mut rstream).unwrap_or(0);
+                    let size = command.response(&mut rstream, &mut DebugCtx).unwrap_or(0);
 
                     println!("{} {:?} cmd >> {}", size, command, std::str::from_utf8(&rstream.buffer).unwrap_or(""));
                     if size > 0 {

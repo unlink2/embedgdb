@@ -5,19 +5,17 @@ use super::target::Target;
 // Holds the Acknowledge Packet and command packet
 
 #[derive(Debug, PartialEq)]
-pub struct Parsed<'a, T>
-where T: Target {
-    pub response: Option<Commands<'a, T>>,
-    pub command: Option<Commands<'a, T>>
+pub struct Parsed<'a> {
+    pub response: Option<Commands<'a>>,
+    pub command: Option<Commands<'a>>
 }
 
-impl<'a, T> Parsed<'a, T>
-where T: Target {
-    pub fn new(response: Option<Commands<'a, T>>, command: Option<Commands<'a, T>>) -> Self {
+impl<'a> Parsed<'a> {
+    pub fn new(response: Option<Commands<'a>>, command: Option<Commands<'a>>) -> Self {
         Self {response, command}
     }
 
-    pub fn ack(command: Option<Commands<'a, T>>) -> Self {
+    pub fn ack(command: Option<Commands<'a>>) -> Self {
         Self::new(
             Some(Commands::Acknowledge(Acknowledge::new())), command)
     }
@@ -51,8 +49,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn retransmit<T>(error: Errors) -> Parsed<'a, T>
-    where T: Target {
+    fn retransmit(error: Errors) -> Parsed<'a> {
         Parsed::new(
             Some(Commands::Retransmit(Retransmit::new(error))), None)
     }
@@ -61,8 +58,7 @@ impl<'a> Parser<'a> {
     // $<optional id:>packet-data#checksum
     // if this function causes an error
     // a retransmit packet should be sent
-    pub fn parse_packet<T>(&mut self, ctx: &'a T, cmds: &'a dyn SupportedCommands<'a, T>) -> Parsed<'a, T>
-    where T: Target {
+    pub fn parse_packet(&mut self, ctx: &'a dyn Target, cmds: &'a dyn SupportedCommands<'a>) -> Parsed<'a> {
         // there are 2 special cases where there is no checksum
         if self.is_match(b'-') {
             return Parsed::new(Some(Commands::RetransmitLast), None);
@@ -254,8 +250,7 @@ mod tests {
     use crate::basic::required::*;
 
     struct TestCommands;
-    impl<'a, T> SupportedCommands<'a, T> for TestCommands
-            where T: Target {}
+    impl<'a> SupportedCommands<'a> for TestCommands {}
 
     #[derive(Debug, Clone, PartialEq)]
     struct TestCtx;
@@ -319,7 +314,7 @@ mod tests {
 
         assert_eq!(parsed, Parsed::new(
             Some(Commands::Acknowledge(Acknowledge::new())),
-            Some(Commands::ReadRegister(ReadRegistersCommand::new(&ctx)))));
+            Some(Commands::ReadRegister(ReadRegistersCommand::new()))));
     }
 
     #[test]

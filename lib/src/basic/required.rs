@@ -13,29 +13,23 @@ use crate::stream::Stream;
  */
 
 #[derive(Debug, PartialEq)]
-pub struct ReasonCommand<'a, T>
-where T: Target {
-    ctx: &'a T,
+pub struct ReasonCommand<'a> {
     state: ResponseWriter<'a>
 }
 
-impl<'a, T> ReasonCommand<'a, T>
-where T: Target {
-    pub fn new(ctx: &'a T) -> Self {
+impl<'a> ReasonCommand<'a> {
+    pub fn new() -> Self {
         Self {
-            ctx,
             state: ResponseWriter::new(&[])
         }
     }
 }
 
-impl<T> Command for ReasonCommand<'_, T>
-where T: Target {
-    fn response(&mut self, stream: &mut dyn Stream) -> Result<usize, Errors> {
+impl Command for ReasonCommand<'_> {
+    fn response(&mut self, stream: &mut dyn Stream, ctx: &mut dyn Target) -> Result<usize, Errors> {
         stream.reset();
         self.state.start(stream)?;
 
-        let ctx = self.ctx;
         self.state.write_all(stream, ctx.reason())?;
         self.state.end(stream)
     }
@@ -45,30 +39,24 @@ where T: Target {
  * g
  */
 #[derive(Debug, PartialEq)]
-pub struct ReadRegistersCommand<'a, T>
-where T: Target {
-    ctx: &'a T,
+pub struct ReadRegistersCommand<'a> {
     state: ResponseWriter<'a>
 }
 
-impl<'a, T> ReadRegistersCommand<'a, T>
-where T: Target {
-    pub fn new(ctx: &'a T) -> Self {
+impl<'a> ReadRegistersCommand<'a> {
+    pub fn new() -> Self {
         Self {
-            ctx,
             state: ResponseWriter::new(&[])
         }
     }
 }
 
-impl<T> Command for ReadRegistersCommand<'_, T>
-where T: Target {
-    fn response(&mut self, stream: &mut dyn Stream) -> Result<usize, Errors> {
+impl Command for ReadRegistersCommand<'_> {
+    fn response(&mut self, stream: &mut dyn Stream, ctx: &mut dyn Target) -> Result<usize, Errors> {
         stream.reset();
         self.state.start(stream)?;
 
-        let ctx = self.ctx;
-        self.state.write_all(stream, ctx.registers())?;
+        self.state.write_all(stream, ctx.rd_registers())?;
         self.state.end(stream)
     }
 }

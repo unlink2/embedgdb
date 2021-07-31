@@ -9,16 +9,15 @@ use super::stream::Stream;
 // are supported.
 // should return not implemented command by default!
 // There will be a few sample implementations of this function
-pub trait SupportedCommands<'a, T>
-where T: Target {
-    fn commands(&self, ctx: &'a T, name: &'a [u8], _args: Option<&'a [u8]>) -> Parsed<'a, T> {
+pub trait SupportedCommands<'a> {
+    fn commands(&self, _ctx: &'a dyn Target, name: &'a [u8], _args: Option<&'a [u8]>) -> Parsed<'a> {
         match name {
             b"?" => {
                 Parsed::ack(
-                    Some(Commands::Reason(ReasonCommand::new(ctx))))
+                    Some(Commands::Reason(ReasonCommand::new())))
             },
             b"g" => {
-              Parsed::ack(Some(Commands::ReadRegister(ReadRegistersCommand::new(ctx))))
+              Parsed::ack(Some(Commands::ReadRegister(ReadRegistersCommand::new())))
             },
             _ =>
                 Parsed::ack(
@@ -30,8 +29,7 @@ where T: Target {
 // all supported commands in
 // this stub
 #[derive(Debug, PartialEq)]
-pub enum Commands<'a, T>
-where T: Target {
+pub enum Commands<'a> {
     NoCommand,
     Unsupported,
     RetransmitLast, // this is returned if the packet received is a -
@@ -39,23 +37,22 @@ where T: Target {
     NotImplemented(NotImplemented<'a>),
     Retransmit(Retransmit<'a>),
     Acknowledge(Acknowledge<'a>),
-    Reason(ReasonCommand<'a, T>),
-    ReadRegister(ReadRegistersCommand<'a, T>)
+    Reason(ReasonCommand<'a>),
+    ReadRegister(ReadRegistersCommand<'a>)
 }
 
-impl<T> Command for Commands<'_, T>
-where T: Target {
-    fn response(&mut self, stream: &mut dyn Stream) -> Result<usize, Errors> {
+impl Command for Commands<'_> {
+    fn response(&mut self, stream: &mut dyn Stream, ctx: &mut dyn Target) -> Result<usize, Errors> {
         match self {
             Self::NoCommand
                 | Self::Unsupported
                 | Self::RetransmitLast
                 | Self::AcknowledgeLast => Ok(0),
-            Self::NotImplemented(c) => c.response(stream),
-            Self::Retransmit(c) => c.response(stream),
-            Self::Acknowledge(c) => c.response(stream),
-            Self::Reason(c) => c.response(stream),
-            Self::ReadRegister(c) => c.response(stream)
+            Self::NotImplemented(c) => c.response(stream, ctx),
+            Self::Retransmit(c) => c.response(stream, ctx),
+            Self::Acknowledge(c) => c.response(stream, ctx),
+            Self::Reason(c) => c.response(stream, ctx),
+            Self::ReadRegister(c) => c.response(stream, ctx)
         }
     }
 }
@@ -66,7 +63,7 @@ pub trait Command {
     /// generates a response for the current command
     /// Returns either an error, or the total amount of bytes written
     /// to the buffer
-    fn response(&mut self, stream: &mut dyn Stream) -> Result<usize, Errors>;
+    fn response(&mut self, stream: &mut dyn Stream, ctx: &mut dyn Target) -> Result<usize, Errors>;
 }
 
 /// tracks the current state
@@ -173,7 +170,7 @@ impl<'a> Retransmit<'a> {
 }
 
 impl Command for Retransmit<'_> {
-    fn response(&mut self, stream: &mut dyn Stream) -> Result<usize, Errors> {
+    fn response(&mut self, stream: &mut dyn Stream, _ctx: &mut dyn Target) -> Result<usize, Errors> {
         stream.reset();
         self.state.write(stream, b'-')
     }
@@ -197,7 +194,7 @@ impl<'a> Acknowledge<'a> {
 }
 
 impl Command for Acknowledge<'_> {
-    fn response(&mut self, stream: &mut dyn Stream) -> Result<usize, Errors> {
+    fn response(&mut self, stream: &mut dyn Stream, _ctx: &mut dyn Target) -> Result<usize, Errors> {
         stream.reset();
         self.state.write(stream, b'+')
     }
@@ -221,7 +218,7 @@ impl<'a> NotImplemented<'a> {
 }
 
 impl Command for NotImplemented<'_> {
-    fn response(&mut self, stream: &mut dyn Stream) -> Result<usize, Errors> {
+    fn response(&mut self, stream: &mut dyn Stream, _ctx: &mut dyn Target) -> Result<usize, Errors> {
         stream.reset();
         let mut size = self.state.start(stream)?;
         size += self.state.end(stream)?;
@@ -235,8 +232,7 @@ mod tests {
     use crate::stream::BufferedStream;
 
     struct TestCommands;
-    impl<'a, T> SupportedCommands<'a, T> for TestCommands
-            where T: Target {}
+    impl<'a> SupportedCommands<'a> for TestCommands {}
 
     #[derive(Debug, Clone, PartialEq)]
     struct TestCtx;
@@ -245,10 +241,10 @@ mod tests {
 
     #[test]
     fn it_should_write_data() {
-        let mut cmd = Commands::<TestCtx>::NotImplemented(NotImplemented::new());
+        let mut cmd = Commands::NotImplemented(NotImplemented::new());
         let mut stream = BufferedStream::new();
 
-        let size = cmd.response(&mut stream).unwrap();
+        let size = cmd.response(&mut stream, &mut TestCtx).unwrap();
 
         assert_eq!(size, 4);
         assert_eq!(stream.pos(), 4);
