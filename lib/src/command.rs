@@ -2,6 +2,7 @@ use super::error::Errors;
 use super::target::Target;
 use super::parser::{Parsed, Parser};
 use super::basic::required::*;
+use super::stream::{BufferedStream, CommandStream};
 
 // This trait builds a command based on the parer's output
 // this allows each target platform to specify exactly which commands
@@ -18,7 +19,7 @@ where T: Target {
             },
             _ =>
                 Parsed::ack(
-                    Some(Commands::NotImplemented(NotImplemented::new(ctx))), ctx)
+                    Some(Commands::NotImplemented(NotImplemented::new())), ctx)
         }
     }
 }
@@ -32,146 +33,116 @@ where T: Target {
     Unsupported,
     RetransmitLast, // this is returned if the packet received is a -
     AcknowledgeLast, // this is returned if the packet received a +
-    NotImplemented(NotImplemented<'a, T>),
-    Retransmit(Retransmit<'a, T>),
-    Acknowledge(Acknowledge<'a, T>),
+    NotImplemented(NotImplemented<'a>),
+    Retransmit(Retransmit<'a>),
+    Acknowledge(Acknowledge<'a>),
     Reason(ReasonCommand<'a, T>)
 }
 
-impl<T> Command<T> for Commands<'_, T>
+impl<T> Command for Commands<'_, T>
 where T: Target {
-    fn response(&mut self, response_data: &mut [u8]) -> Result<usize, Errors> {
+    fn response(&mut self, stream: &mut dyn CommandStream) -> Result<usize, Errors> {
         match self {
             Self::NoCommand
                 | Self::Unsupported
                 | Self::RetransmitLast
                 | Self::AcknowledgeLast => Ok(0),
-            Self::NotImplemented(c) => c.response(response_data),
-            Self::Retransmit(c) => c.response(response_data),
-            Self::Acknowledge(c) => c.response(response_data),
-            Self::Reason(c) => c.response(response_data)
+            Self::NotImplemented(c) => c.response(stream),
+            Self::Retransmit(c) => c.response(stream),
+            Self::Acknowledge(c) => c.response(stream),
+            Self::Reason(c) => c.response(stream)
         }
     }
 }
 
 // general interface all commands
 // should implement
-pub trait Command<T>
-where T: Target {
+pub trait Command {
     /// generates a response for the current command
     /// Returns either an error, or the total amount of bytes written
     /// to the buffer
-    fn response(&mut self, response_data: &mut [u8]) -> Result<usize, Errors>;
+    fn response(&mut self, stream: &mut dyn CommandStream) -> Result<usize, Errors>;
 }
 
 /// tracks the current state
 /// of response writing
 #[derive(Debug, PartialEq)]
-pub struct ResponseState<'a, T>
-where T: Target {
+pub struct ResponseState<'a> {
     pub fields: &'a [u8],
-    pub current_write: usize,
-    pub chksm: u32, // buffer for checksum
-    pub ctx: &'a T
 }
 
-impl<'a, T> ResponseState<'a, T>
-where T: Target {
-    pub fn new(fields: &'a [u8], ctx: &'a T) -> Self {
+impl<'a> ResponseState<'a> {
+    pub fn new(fields: &'a [u8]) -> Self {
         Self {
             fields,
-            current_write: 0,
-            chksm: 0,
-            ctx
         }
     }
 
-    pub fn reset_write(&mut self) {
-        self.current_write = 0;
-        self.chksm = 0;
-    }
-
-
     // starts a packet
-    pub fn start(&mut self, response_data: &mut [u8]) -> Result<usize, Errors> {
-        self.write_force(response_data, b'$')
+    pub fn start(&mut self, stream: &mut dyn CommandStream) -> Result<usize, Errors> {
+        self.write_force(stream, b'$')
     }
 
     // ends a packet
-    pub fn end(&mut self, response_data: &mut [u8]) -> Result<usize, Errors> {
-        let mut size = self.write_force(response_data, b'#')?;
+    pub fn end(&mut self, stream: &mut dyn CommandStream) -> Result<usize, Errors> {
+        let mut size = self.write_force(stream, b'#')?;
 
-        self.chksm += Parser::add_chksm(response_data);
         // write checksum byte
-        let chksm = (self.chksm % 256) as u8;
+        let chksm = (stream.chksm() % 256) as u8;
 
-        size += self.write_hex(response_data, chksm)?;
+        size += self.write_hex(stream, chksm)?;
 
         Ok(size)
     }
 
-    pub fn write_hex(&mut self, response_data: &mut [u8], byte: u8) -> Result<usize, Errors> {
+    pub fn write_hex(&mut self, stream: &mut dyn CommandStream, byte: u8) -> Result<usize, Errors> {
         let byte = Parser::to_hex_tuple(byte);
-        let mut size = self.write_force(response_data, byte.0)?;
-        size += self.write_force(response_data, byte.1)?;
+        let mut size = self.write_force(stream, byte.0)?;
+        size += self.write_force(stream, byte.1)?;
         Ok(size)
     }
 
-    pub fn ok(&mut self, response_data: &mut [u8]) -> Result<usize, Errors> {
-        self.write_all(response_data, b"OK")
+    pub fn ok(&mut self, stream: &mut dyn CommandStream) -> Result<usize, Errors> {
+        self.write_all(stream, b"OK")
     }
 
-    pub fn error(&mut self, response_data: &mut [u8], _error: Errors) -> Result<usize, Errors> {
+    pub fn error(&mut self, stream: &mut dyn CommandStream, _error: Errors) -> Result<usize, Errors> {
         // TODO write error code
-        self.write_all(response_data, b"E00")
+        self.write_all(stream, b"E00")
     }
 
     pub fn escape(byte: u8) -> u8 {
         byte ^ 0x20
     }
 
-    pub fn write_escape(&mut self, response_data: &mut [u8], byte: u8) -> Result<usize, Errors> {
-        let mut size = self.write_force(response_data, b'}')?;
-        size += self.write(response_data, Self::escape(byte))?;
+    pub fn write_escape(&mut self, stream: &mut dyn CommandStream, byte: u8) -> Result<usize, Errors> {
+        let mut size = self.write_force(stream, b'}')?;
+        size += self.write(stream, Self::escape(byte))?;
 
         Ok(size)
     }
 
-    pub fn write_all(&mut self, response_data: &mut [u8], bytes: &[u8]) -> Result<usize, Errors> {
+    pub fn write_all(&mut self, stream: &mut dyn CommandStream, bytes: &[u8]) -> Result<usize, Errors> {
         let mut size = 0;
         for byte in bytes {
-            size += self.write(response_data, *byte)?;
+            size += self.write(stream, *byte)?;
         }
         Ok(size)
     }
 
     /// forces the write of a byte even if it would normally be escaped
-    pub fn write_force(&mut self, response_data: &mut [u8], byte: u8) -> Result<usize, Errors> {
-        let start = self.current_write;
-        if response_data.len() < self.current_write+1 {
-            // do not clear before adding bytes to checksum,
-            self.chksm += Parser::add_chksm(response_data);
-
-            // attempt to handle memory fill
-            if !self.ctx.buffer_full(response_data) {
-                return Err(Errors::MemoryFilledInterupt);
-            } else {
-                self.current_write = 0;
-            }
-        }
-        response_data[self.current_write] = byte;
-        self.current_write += 1;
-        Ok(self.current_write-start)
+    pub fn write_force(&mut self, stream: &mut dyn CommandStream, byte: u8) -> Result<usize, Errors> {
+        stream.write(byte)
     }
 
-    pub fn write(&mut self, response_data: &mut [u8], byte: u8) -> Result<usize, Errors> {
+    pub fn write(&mut self, stream: &mut dyn CommandStream, byte: u8) -> Result<usize, Errors> {
         match byte {
             // those bytes must always be escaped!
             b'}' | b'$' | b'#' | b'*' => {
-                self.write_escape(response_data, byte)
+                self.write_escape(stream, byte)
             },
             _ => {
-                self.write_force(response_data, byte)
+                self.write_force(stream, byte)
             }
         }
     }
@@ -182,27 +153,24 @@ where T: Target {
  */
 
 #[derive(Debug, PartialEq)]
-pub struct Retransmit<'a, T>
-where T: Target {
-    state: ResponseState<'a, T>,
+pub struct Retransmit<'a> {
+    state: ResponseState<'a>,
     error: Errors
 }
 
-impl<'a, T> Retransmit<'a, T>
-where T: Target {
-    pub fn new(ctx: &'a T, error: Errors) -> Self {
+impl<'a> Retransmit<'a> {
+    pub fn new(error: Errors) -> Self {
         Self {
-            state: ResponseState::new(&[], ctx),
+            state: ResponseState::new(&[]),
             error
         }
     }
 }
 
-impl<T> Command<T> for Retransmit<'_, T>
-where T: Target {
-    fn response(&mut self, response_data: &mut [u8]) -> Result<usize, Errors> {
-        self.state.reset_write();
-        self.state.write(response_data, b'-')
+impl Command for Retransmit<'_> {
+    fn response(&mut self, stream: &mut dyn CommandStream) -> Result<usize, Errors> {
+        stream.reset();
+        self.state.write(stream, b'-')
     }
 }
 
@@ -211,25 +179,22 @@ where T: Target {
  */
 
 #[derive(Debug, PartialEq)]
-pub struct Acknowledge<'a, T>
-where T: Target {
-    state: ResponseState<'a, T>
+pub struct Acknowledge<'a> {
+    state: ResponseState<'a>
 }
 
-impl<'a, T> Acknowledge<'a, T>
-where T: Target {
-    pub fn new(ctx: &'a T) -> Self {
+impl<'a> Acknowledge<'a> {
+    pub fn new() -> Self {
         Self {
-            state: ResponseState::new(&[], ctx)
+            state: ResponseState::new(&[])
         }
     }
 }
 
-impl<T> Command<T> for Acknowledge<'_, T>
-where T: Target {
-    fn response(&mut self, response_data: &mut [u8]) -> Result<usize, Errors> {
-        self.state.reset_write();
-        self.state.write(response_data, b'+')
+impl Command for Acknowledge<'_> {
+    fn response(&mut self, stream: &mut dyn CommandStream) -> Result<usize, Errors> {
+        stream.reset();
+        self.state.write(stream, b'+')
     }
 }
 
@@ -238,26 +203,23 @@ where T: Target {
  */
 
 #[derive(Debug, PartialEq)]
-pub struct NotImplemented<'a, T>
-where T: Target {
-    state: ResponseState<'a, T>
+pub struct NotImplemented<'a> {
+    state: ResponseState<'a>
 }
 
-impl<'a, T> NotImplemented<'a, T>
-where T: Target {
-    pub fn new(ctx: &'a T) -> Self {
+impl<'a> NotImplemented<'a> {
+    pub fn new() -> Self {
         Self {
-            state: ResponseState::new(&[], ctx)
+            state: ResponseState::new(&[])
         }
     }
 }
 
-impl<T> Command<T> for NotImplemented<'_, T>
-where T: Target {
-    fn response(&mut self, response_data: &mut [u8]) -> Result<usize, Errors> {
-        self.state.reset_write();
-        let mut size = self.state.start(response_data)?;
-        size += self.state.end(response_data)?;
+impl Command for NotImplemented<'_> {
+    fn response(&mut self, stream: &mut dyn CommandStream) -> Result<usize, Errors> {
+        stream.reset();
+        let mut size = self.state.start(stream)?;
+        size += self.state.end(stream)?;
         Ok(size)
     }
 }
@@ -280,33 +242,44 @@ mod tests {
 
     #[test]
     fn it_should_write_data() {
-        let mut cmd = Commands::NotImplemented(NotImplemented::new(&TestCtx));
-        let mut buffer = [0; 4];
+        let mut cmd = Commands::<TestCtx>::NotImplemented(NotImplemented::new());
+        let mut stream = BufferedStream::new();
 
-        let size = cmd.response(&mut buffer).unwrap();
+        let size = cmd.response(&mut stream).unwrap();
 
         assert_eq!(size, 4);
-        assert_eq!(&buffer, b"$#00");
+        assert_eq!(stream.pos(), 4);
+        assert_eq!(&stream.buffer[..4], b"$#00");
     }
 
     #[test]
     fn it_should_escape_data() {
-        let mut buffer = [0; 4];
-        let mut state = ResponseState::new(&[], &TestCtx);
+        let mut stream = BufferedStream::new();
+        let mut state = ResponseState::new(&[]);
 
-        let mut size = state.write(&mut buffer, b'$').unwrap();
-        size += state.write(&mut buffer, b'B').unwrap();
+        let mut size = state.write(&mut stream, b'$').unwrap();
+        size += state.write(&mut stream, b'B').unwrap();
 
         assert_eq!(size, 3);
-        assert_eq!(&buffer, &[b'}', 4, b'B', 0]);
+        assert_eq!(stream.pos(), 3);
+        assert_eq!(&stream.buffer[..4], &[b'}', 4, b'B', 0]);
     }
 
     #[test]
     fn it_should_fail_if_resize_is_not_possible() {
-        let mut buffer = [0; 4];
-        let mut state = ResponseState::new(&[], &TestCtx);
+        let mut stream = BufferedStream::new();
+        let mut state = ResponseState::new(&[]);
 
-        let err = state.write_all(&mut buffer, b"Hello").unwrap_err();
+        // for some reason for loop did not work here
+        let mut i = 0;
+        while i < stream.len() {
+            state.write(&mut stream, b'f').unwrap();
+            i = i + 1;
+        }
+
+        assert_eq!(stream.len(), 256);
+        assert_eq!(stream.pos(), 256);
+        let err = state.write_all(&mut stream, b"Hello").unwrap_err();
         assert_eq!(err, Errors::MemoryFilledInterupt);
     }
 }

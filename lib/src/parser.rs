@@ -19,7 +19,7 @@ where T: Target {
 
     pub fn ack(command: Option<Commands<'a, T>>, ctx: &'a T) -> Self {
         Self::new(
-            Some(Commands::Acknowledge(Acknowledge::new(ctx))), command)
+            Some(Commands::Acknowledge(Acknowledge::new())), command)
     }
 }
 
@@ -54,7 +54,7 @@ impl<'a> Parser<'a> {
     fn retransmit<T>(ctx: &'a T, error: Errors) -> Parsed<'a, T>
     where T: Target {
         Parsed::new(
-            Some(Commands::Retransmit(Retransmit::new(ctx, error))), None)
+            Some(Commands::Retransmit(Retransmit::new(error))), None)
     }
 
     // packet layout:
@@ -175,7 +175,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn add_chksm(response_data: &[u8]) -> u32 {
+    fn add_chksm(response_data: &[u8]) -> u32 {
         // never include $ and # in checksum. -> this is fine because they always need
         // to be escaped anyway so in a well-formed packet they should always appear at the
         // start/end
@@ -190,7 +190,7 @@ impl<'a> Parser<'a> {
         return sum;
     }
 
-    // adds a buffe rto chksm
+    // adds a buffer to chksm
     pub fn chksm(response_data: &[u8]) -> u32 {
         Self::add_chksm(response_data) % 256
     }
@@ -282,8 +282,8 @@ mod tests {
         let parsed = parser.parse_packet(&ctx, &TestCommands);
 
         assert_eq!(parsed, Parsed::new(
-            Some(Commands::Acknowledge(Acknowledge::new(&ctx))),
-            Some(Commands::NotImplemented(NotImplemented::new(&ctx)))));
+            Some(Commands::Acknowledge(Acknowledge::new())),
+            Some(Commands::NotImplemented(NotImplemented::new()))));
     }
 
     #[test]
@@ -308,8 +308,8 @@ mod tests {
         let parsed = parser.parse_packet(&ctx, &TestCommands);
 
         assert_eq!(parsed, Parsed::new(
-            Some(Commands::Acknowledge(Acknowledge::new(&ctx))),
-            Some(Commands::NotImplemented(NotImplemented::new(&ctx)))));
+            Some(Commands::Acknowledge(Acknowledge::new())),
+            Some(Commands::NotImplemented(NotImplemented::new()))));
     }
 
     #[test]

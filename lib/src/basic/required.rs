@@ -6,6 +6,7 @@ use crate::command::*;
 use crate::parser::{Parser, Parsed};
 use crate::target::Target;
 use crate::error::Errors;
+use crate::stream::CommandStream;
 
 /**
  * ?
@@ -14,27 +15,33 @@ use crate::error::Errors;
 #[derive(Debug, PartialEq)]
 pub struct ReasonCommand<'a, T>
 where T: Target {
-    state: ResponseState<'a, T>
+    ctx: &'a T,
+    state: ResponseState<'a>
 }
 
 impl<'a, T> ReasonCommand<'a, T>
 where T: Target {
     pub fn new(ctx: &'a T) -> Self {
         Self {
-            state: ResponseState::new(&[], ctx)
+            ctx,
+            state: ResponseState::new(&[])
         }
     }
 }
 
-impl<T> Command<T> for ReasonCommand<'_, T>
+impl<T> Command for ReasonCommand<'_, T>
 where T: Target {
-    fn response(&mut self, response_data: &mut [u8]) -> Result<usize, Errors> {
-        self.state.reset_write();
-        self.state.start(response_data)?;
+    fn response(&mut self, stream: &mut dyn CommandStream) -> Result<usize, Errors> {
+        stream.reset();
+        self.state.start(stream)?;
 
-        let ctx = self.state.ctx;
-        self.state.write_all(response_data, ctx.reason())?;
-        self.state.end(response_data)
+        let ctx = self.ctx;
+        self.state.write_all(stream, ctx.reason())?;
+        self.state.end(stream)
     }
 }
 
+/**
+ * g
+ */
+pub struct ReadRegistersCommand;

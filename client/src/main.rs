@@ -2,6 +2,7 @@ extern crate embedgdb;
 use std::{io::{Read, Write}, net::{TcpListener, TcpStream}};
 use embedgdb::{command::{SupportedCommands, Command}, parser::Parser};
 use embedgdb::target::Target;
+use embedgdb::stream::BufferedStream;
 
 struct DebugCommands;
 impl<'a, T> SupportedCommands<'a, T> for DebugCommands
@@ -30,22 +31,22 @@ fn handle(mut stream: TcpStream) -> std::io::Result<()> {
                 let result = parser.parse_packet(&DebugCtx, &DebugCommands);
 
                 if let Some(mut response) = result.response {
-                    let mut resbuffer = [0xFF; 1024];
-                    let size = response.response(&mut resbuffer).unwrap_or(0);
+                    let mut rstream = BufferedStream::new();
+                    let size = response.response(&mut rstream).unwrap_or(0);
 
-                    println!("{} {:?} res >> {}", size, response, std::str::from_utf8(&resbuffer).unwrap_or(""));
+                    println!("{} {:?} res >> {}", size, response, std::str::from_utf8(&rstream.buffer).unwrap_or(""));
                     if size > 0 {
-                        stream.write(&resbuffer)?;
+                        stream.write(&rstream.buffer)?;
                     }
                 }
 
                 if let Some(mut command) = result.command {
-                    let mut resbuffer = [0; 1024];
-                    let size = command.response(&mut resbuffer).unwrap_or(0);
+                    let mut rstream = BufferedStream::new();
+                    let size = command.response(&mut rstream).unwrap_or(0);
 
-                    println!("{} {:?} cmd >> {}", size, command, std::str::from_utf8(&resbuffer).unwrap_or(""));
+                    println!("{} {:?} cmd >> {}", size, command, std::str::from_utf8(&rstream.buffer).unwrap_or(""));
                     if size > 0 {
-                        stream.write(&resbuffer)?;
+                        stream.write(&rstream.buffer)?;
                     }
                 }
             },
