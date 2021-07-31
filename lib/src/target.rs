@@ -25,5 +25,12 @@ pub trait Target {
 pub struct VirtualTarget {
 }
 
+impl VirtualTarget {
+    pub fn new() -> Self {
+        Self {
+        }
+    }
+}
+
 impl Target for VirtualTarget {
 }

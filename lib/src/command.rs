@@ -10,7 +10,7 @@ use super::stream::Stream;
 // should return not implemented command by default!
 // There will be a few sample implementations of this function
 pub trait SupportedCommands<'a> {
-    fn commands(&self, _ctx: &'a dyn Target, name: &'a [u8], _args: Option<&'a [u8]>) -> Parsed<'a> {
+    fn commands(&self, name: &'a [u8], _args: Option<&'a [u8]>) -> Parsed<'a> {
         match name {
             b"?" => {
                 Parsed::ack(
@@ -52,7 +52,7 @@ impl Command for Commands<'_> {
             Self::Retransmit(c) => c.response(stream, ctx),
             Self::Acknowledge(c) => c.response(stream, ctx),
             Self::Reason(c) => c.response(stream, ctx),
-            Self::ReadRegister(c) => c.response(stream, ctx)
+            Self::ReadRegister(c) => c.response(stream, ctx),
         }
     }
 }

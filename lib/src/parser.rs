@@ -1,6 +1,5 @@
 use super::command::*;
 use super::error::Errors;
-use super::target::Target;
 
 // Holds the Acknowledge Packet and command packet
 
@@ -58,7 +57,7 @@ impl<'a> Parser<'a> {
     // $<optional id:>packet-data#checksum
     // if this function causes an error
     // a retransmit packet should be sent
-    pub fn parse_packet(&mut self, ctx: &'a dyn Target, cmds: &'a dyn SupportedCommands<'a>) -> Parsed<'a> {
+    pub fn parse_packet(&mut self, cmds: &'a dyn SupportedCommands<'a>) -> Parsed<'a> {
         // there are 2 special cases where there is no checksum
         if self.is_match(b'-') {
             return Parsed::new(Some(Commands::RetransmitLast), None);
@@ -95,7 +94,7 @@ impl<'a> Parser<'a> {
             return Self::retransmit(Errors::InvalidChecksum);
         }
 
-        cmds.commands(ctx, name, args)
+        cmds.commands(name, args)
     }
 
     pub fn parse_name(&mut self) -> &'a [u8] {
@@ -252,11 +251,6 @@ mod tests {
     struct TestCommands;
     impl<'a> SupportedCommands<'a> for TestCommands {}
 
-    #[derive(Debug, Clone, PartialEq)]
-    struct TestCtx;
-    impl Target for TestCtx {
-    }
-
     #[test]
     fn it_should_parse_hex() {
         assert_eq!(Parser::to_hex(15), Some(b'f'));
@@ -279,10 +273,9 @@ mod tests {
         let chksm = "$vMustReplyEmpty#3a".as_bytes();
 
         let mut parser = Parser::new(chksm);
-        let ctx = TestCtx;
 
         // must reply empty should reply with an empty packet!
-        let parsed = parser.parse_packet(&ctx, &TestCommands);
+        let parsed = parser.parse_packet(&TestCommands);
 
         assert_eq!(parsed, Parsed::new(
             Some(Commands::Acknowledge(Acknowledge::new())),
@@ -294,10 +287,9 @@ mod tests {
         let chksm = "$vMustReplyEmpty#3a".as_bytes();
 
         let mut parser = Parser::new(chksm);
-        let ctx = TestCtx;
 
         // must reply empty should reply with an empty packet!
-        let _ = parser.parse_packet(&ctx, &TestCommands);
+        let _ = parser.parse_packet(&TestCommands);
 
         assert!(parser.is_at_end());
     }
@@ -307,10 +299,9 @@ mod tests {
         let chksm = "$g#67".as_bytes();
 
         let mut parser = Parser::new(chksm);
-        let ctx = TestCtx;
 
         // must reply empty should reply with an empty packet!
-        let parsed = parser.parse_packet(&ctx, &TestCommands);
+        let parsed = parser.parse_packet(&TestCommands);
 
         assert_eq!(parsed, Parsed::new(
             Some(Commands::Acknowledge(Acknowledge::new())),
@@ -321,9 +312,8 @@ mod tests {
     fn it_should_parse_long_packet() {
         let packet = "$qSupported:multiprocess+;swbreak+;hwbreak+;qRelocInsn+;fork-events+;vfork-events+;exec-events+;vContSupported+;QThreadEvents+;no-resumed+;xmlRegisters=i386#6a".as_bytes();
         let mut parser = Parser::new(packet);
-        let ctx = TestCtx;
 
-        let parsed = parser.parse_packet(&ctx, &TestCommands);
+        let parsed = parser.parse_packet(&TestCommands);
 
         assert_eq!(parsed, Parsed::new(
             Some(Commands::Acknowledge(Acknowledge::new())),
@@ -334,9 +324,8 @@ mod tests {
     fn it_should_parse_to_end_long_packet() {
         let packet = "$qSupported:multiprocess+;swbreak+;hwbreak+;qRelocInsn+;fork-events+;vfork-events+;exec-events+;vContSupported+;QThreadEvents+;no-resumed+;xmlRegisters=i386#6a".as_bytes();
         let mut parser = Parser::new(packet);
-        let ctx = TestCtx;
 
-        let _ = parser.parse_packet(&ctx, &TestCommands);
+        let _ = parser.parse_packet(&TestCommands);
         assert!(parser.is_at_end());
     }
 }
