@@ -10,15 +10,15 @@ use super::basic::required::*;
 // There will be a few sample implementations of this function
 pub trait SupportedCommands<'a, T>
 where T: Target {
-    fn commands(&self, ctx: T, name: &'a [u8], args: Option<&'a [u8]>) -> Parsed<T> {
+    fn commands(&self, ctx: &'a T, name: &'a [u8], args: Option<&'a [u8]>) -> Parsed<'a, T> {
         match name {
             b"?" => {
                 Parsed::ack(
-                    Some(Commands::Reason(ReasonCommand::new(ctx.clone()))), ctx)
+                    Some(Commands::Reason(ReasonCommand::new(ctx))), ctx)
             },
             _ =>
                 Parsed::ack(
-                    Some(Commands::NotImplemented(NotImplemented::new(ctx.clone()))), ctx)
+                    Some(Commands::NotImplemented(NotImplemented::new(ctx))), ctx)
         }
     }
 }
@@ -72,12 +72,12 @@ where T: Target {
     pub fields: &'a [u8],
     pub current_write: usize,
     pub chksm: u32, // buffer for checksum
-    pub ctx: T
+    pub ctx: &'a T
 }
 
 impl<'a, T> ResponseState<'a, T>
 where T: Target {
-    pub fn new(fields: &'a [u8], ctx: T) -> Self {
+    pub fn new(fields: &'a [u8], ctx: &'a T) -> Self {
         Self {
             fields,
             current_write: 0,
@@ -188,9 +188,9 @@ where T: Target {
     error: Errors
 }
 
-impl<T> Retransmit<'_, T>
+impl<'a, T> Retransmit<'a, T>
 where T: Target {
-    pub fn new(ctx: T, error: Errors) -> Self {
+    pub fn new(ctx: &'a T, error: Errors) -> Self {
         Self {
             state: ResponseState::new(&[], ctx),
             error
@@ -216,9 +216,9 @@ where T: Target {
     state: ResponseState<'a, T>
 }
 
-impl<T> Acknowledge<'_, T>
+impl<'a, T> Acknowledge<'a, T>
 where T: Target {
-    pub fn new(ctx: T) -> Self {
+    pub fn new(ctx: &'a T) -> Self {
         Self {
             state: ResponseState::new(&[], ctx)
         }
@@ -243,9 +243,9 @@ where T: Target {
     state: ResponseState<'a, T>
 }
 
-impl<T> NotImplemented<'_, T>
+impl<'a, T> NotImplemented<'a, T>
 where T: Target {
-    pub fn new(ctx: T) -> Self {
+    pub fn new(ctx: &'a T) -> Self {
         Self {
             state: ResponseState::new(&[], ctx)
         }
@@ -273,14 +273,14 @@ mod tests {
     #[derive(Debug, Clone, PartialEq)]
     struct TestCtx;
     impl Target for TestCtx {
-        fn buffer_full(&mut self, response_data: &[u8]) -> bool {
+        fn buffer_full(&self, response_data: &[u8]) -> bool {
             false
         }
     }
 
     #[test]
     fn it_should_write_data() {
-        let mut cmd = Commands::NotImplemented(NotImplemented::new(TestCtx));
+        let mut cmd = Commands::NotImplemented(NotImplemented::new(&TestCtx));
         let mut buffer = [0; 4];
 
         let size = cmd.response(&mut buffer).unwrap();
@@ -292,7 +292,7 @@ mod tests {
     #[test]
     fn it_should_escape_data() {
         let mut buffer = [0; 4];
-        let mut state = ResponseState::new(&[], TestCtx);
+        let mut state = ResponseState::new(&[], &TestCtx);
 
         let mut size = state.write(&mut buffer, b'$').unwrap();
         size += state.write(&mut buffer, b'B').unwrap();
@@ -304,7 +304,7 @@ mod tests {
     #[test]
     fn it_should_fail_if_resize_is_not_possible() {
         let mut buffer = [0; 4];
-        let mut state = ResponseState::new(&[], TestCtx);
+        let mut state = ResponseState::new(&[], &TestCtx);
 
         let err = state.write_all(&mut buffer, b"Hello").unwrap_err();
         assert_eq!(err, Errors::MemoryFilledInterupt);

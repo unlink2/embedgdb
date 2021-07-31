@@ -17,7 +17,7 @@ where T: Target {
         Self {response, command}
     }
 
-    pub fn ack(command: Option<Commands<'a, T>>, ctx: T) -> Self {
+    pub fn ack(command: Option<Commands<'a, T>>, ctx: &'a T) -> Self {
         Self::new(
             Some(Commands::Acknowledge(Acknowledge::new(ctx))), command)
     }
@@ -51,7 +51,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn retransmit<T>(ctx: T, error: Errors) -> Parsed<'a, T>
+    fn retransmit<T>(ctx: &'a T, error: Errors) -> Parsed<'a, T>
     where T: Target {
         Parsed::new(
             Some(Commands::Retransmit(Retransmit::new(ctx, error))), None)
@@ -61,7 +61,7 @@ impl<'a> Parser<'a> {
     // $<optional id:>packet-data#checksum
     // if this function causes an error
     // a retransmit packet should be sent
-    pub fn parse_packet<T>(&mut self, ctx: T, cmds: &'a dyn SupportedCommands<'a, T>) -> Parsed<'a, T>
+    pub fn parse_packet<T>(&mut self, ctx: &'a T, cmds: &'a dyn SupportedCommands<'a, T>) -> Parsed<'a, T>
     where T: Target {
         // there are 2 special cases where there is no checksum
         if self.is_match(b'-') {
@@ -249,7 +249,7 @@ mod tests {
     #[derive(Debug, Clone, PartialEq)]
     struct TestCtx;
     impl Target for TestCtx {
-        fn buffer_full(&mut self, response_data: &[u8]) -> bool {
+        fn buffer_full(&self, response_data: &[u8]) -> bool {
             false
         }
     }
@@ -279,11 +279,11 @@ mod tests {
         let ctx = TestCtx;
 
         // must reply empty should reply with an empty packet!
-        let parsed = parser.parse_packet(ctx.clone(), &TestCommands);
+        let parsed = parser.parse_packet(&ctx, &TestCommands);
 
         assert_eq!(parsed, Parsed::new(
-            Some(Commands::Acknowledge(Acknowledge::new(ctx.clone()))),
-            Some(Commands::NotImplemented(NotImplemented::new(ctx)))));
+            Some(Commands::Acknowledge(Acknowledge::new(&ctx))),
+            Some(Commands::NotImplemented(NotImplemented::new(&ctx)))));
     }
 
     #[test]
@@ -294,7 +294,7 @@ mod tests {
         let ctx = TestCtx;
 
         // must reply empty should reply with an empty packet!
-        let _ = parser.parse_packet(ctx.clone(), &TestCommands);
+        let _ = parser.parse_packet(&ctx, &TestCommands);
 
         assert!(parser.is_at_end());
     }
@@ -305,11 +305,11 @@ mod tests {
         let mut parser = Parser::new(packet);
         let ctx = TestCtx;
 
-        let parsed = parser.parse_packet(ctx.clone(), &TestCommands);
+        let parsed = parser.parse_packet(&ctx, &TestCommands);
 
         assert_eq!(parsed, Parsed::new(
-            Some(Commands::Acknowledge(Acknowledge::new(ctx.clone()))),
-            Some(Commands::NotImplemented(NotImplemented::new(ctx)))));
+            Some(Commands::Acknowledge(Acknowledge::new(&ctx))),
+            Some(Commands::NotImplemented(NotImplemented::new(&ctx)))));
     }
 
     #[test]
@@ -318,7 +318,7 @@ mod tests {
         let mut parser = Parser::new(packet);
         let ctx = TestCtx;
 
-        let _ = parser.parse_packet(ctx.clone(), &TestCommands);
+        let _ = parser.parse_packet(&ctx, &TestCommands);
         assert!(parser.is_at_end());
     }
 }

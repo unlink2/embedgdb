@@ -17,9 +17,9 @@ where T: Target {
     state: ResponseState<'a, T>
 }
 
-impl<T> ReasonCommand<'_, T>
+impl<'a, T> ReasonCommand<'a, T>
 where T: Target {
-    pub fn new(ctx: T) -> Self {
+    pub fn new(ctx: &'a T) -> Self {
         Self {
             state: ResponseState::new(&[], ctx)
         }
@@ -32,7 +32,7 @@ where T: Target {
         self.state.reset_write();
         self.state.start(response_data)?;
 
-        let ctx = self.state.ctx.clone();
+        let ctx = self.state.ctx;
         self.state.write_all(response_data, ctx.reason())?;
         self.state.end(response_data)
     }

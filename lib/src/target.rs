@@ -1,4 +1,5 @@
 /// This is the cpu architecture specific
+/// This is the cpu architecture specific
 /// response data and io handling
 /// The target context should be cheap to clone!
 pub trait Target: Clone + PartialEq {
@@ -9,7 +10,7 @@ pub trait Target: Clone + PartialEq {
     /// or false to abort and attempt with a larger buffer
     /// T is used to provide a custom context for handling the data
     /// this can be nearly any object
-    fn buffer_full(&mut self, response_data: &[u8]) -> bool;
+    fn buffer_full(&self, response_data: &[u8]) -> bool;
 
     /// returns the halt reason
     /// as a slice of bytes

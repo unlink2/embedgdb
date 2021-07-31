@@ -11,7 +11,7 @@ where T: Target {
 #[derive(Debug, Clone, PartialEq)]
 struct DebugCtx;
 impl Target for DebugCtx {
-    fn buffer_full(&mut self, _response_data: &[u8]) -> bool {
+    fn buffer_full(&self, _response_data: &[u8]) -> bool {
         false
     }
 }
@@ -27,7 +27,7 @@ fn handle(mut stream: TcpStream) -> std::io::Result<()> {
                 println!("{} bytes >> {}", n, std::str::from_utf8(&buffer).unwrap_or(""));
                 let mut parser = Parser::new(&buffer);
 
-                let result = parser.parse_packet(DebugCtx, &DebugCommands);
+                let result = parser.parse_packet(&DebugCtx, &DebugCommands);
 
                 if let Some(mut response) = result.response {
                     let mut resbuffer = [0xFF; 1024];
