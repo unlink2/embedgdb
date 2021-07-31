@@ -12,9 +12,6 @@ where T: Target {
 #[derive(Debug, Clone, PartialEq)]
 struct DebugCtx;
 impl Target for DebugCtx {
-    fn buffer_full(&self, _response_data: &[u8]) -> bool {
-        false
-    }
 }
 
 fn handle(mut stream: TcpStream) -> std::io::Result<()> {

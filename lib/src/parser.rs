@@ -17,7 +17,7 @@ where T: Target {
         Self {response, command}
     }
 
-    pub fn ack(command: Option<Commands<'a, T>>, ctx: &'a T) -> Self {
+    pub fn ack(command: Option<Commands<'a, T>>) -> Self {
         Self::new(
             Some(Commands::Acknowledge(Acknowledge::new())), command)
     }
@@ -51,7 +51,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn retransmit<T>(ctx: &'a T, error: Errors) -> Parsed<'a, T>
+    fn retransmit<T>(error: Errors) -> Parsed<'a, T>
     where T: Target {
         Parsed::new(
             Some(Commands::Retransmit(Retransmit::new(error))), None)
@@ -73,7 +73,7 @@ impl<'a> Parser<'a> {
         // first char needs to be $
         if !self.is_match(b'$') {
             // bail
-            return Self::retransmit(ctx, Errors::UnexpectedIntroduction);
+            return Self::retransmit(Errors::UnexpectedIntroduction);
         }
 
         // read packet name
@@ -92,14 +92,24 @@ impl<'a> Parser<'a> {
         // read end-delim
         if !self.is_match(b'#') {
             // retransmit - the packet never terminated!
-            return Self::retransmit(ctx, Errors::NotTerminated);
+            return Self::retransmit(Errors::NotTerminated);
         }
         // is checksum ok?
         if !self.verify_chksm() {
-            return Self::retransmit(ctx, Errors::InvalidChecksum);
+            return Self::retransmit(Errors::InvalidChecksum);
         }
 
         cmds.commands(ctx, name, args)
+    }
+
+    pub fn parse_name(&mut self) -> &'a [u8] {
+        match self.peek() {
+            b'v' | b'q' => self.parse_token(),
+            _ => {
+                self.advance();
+                &self.packet[self.current-1..self.current]
+            }
+        }
     }
 
     /// parses a single token
@@ -241,6 +251,7 @@ impl<'a> Parser<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::basic::required::*;
 
     struct TestCommands;
     impl<'a, T> SupportedCommands<'a, T> for TestCommands
@@ -249,9 +260,6 @@ mod tests {
     #[derive(Debug, Clone, PartialEq)]
     struct TestCtx;
     impl Target for TestCtx {
-        fn buffer_full(&self, response_data: &[u8]) -> bool {
-            false
-        }
     }
 
     #[test]
@@ -297,6 +305,21 @@ mod tests {
         let _ = parser.parse_packet(&ctx, &TestCommands);
 
         assert!(parser.is_at_end());
+    }
+
+    #[test]
+    fn it_should_read_name() {
+        let chksm = "$g#67".as_bytes();
+
+        let mut parser = Parser::new(chksm);
+        let ctx = TestCtx;
+
+        // must reply empty should reply with an empty packet!
+        let parsed = parser.parse_packet(&ctx, &TestCommands);
+
+        assert_eq!(parsed, Parsed::new(
+            Some(Commands::Acknowledge(Acknowledge::new())),
+            Some(Commands::ReadRegister(ReadRegistersCommand::new(&ctx)))));
     }
 
     #[test]

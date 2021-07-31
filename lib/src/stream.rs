@@ -2,7 +2,7 @@ use super::error::Errors;
 
 /// basic stream implementation
 /// for command responses
-pub trait CommandStream {
+pub trait Stream {
     /// returns buffer lenght, or 0 if
     /// the buffer has no length
     fn len(&self) -> usize {
@@ -52,7 +52,7 @@ impl BufferedStream {
     }
 }
 
-impl CommandStream for BufferedStream {
+impl Stream for BufferedStream {
     fn len(&self) -> usize {
         self.buffer.len()
     }
