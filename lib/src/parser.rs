@@ -16,6 +16,11 @@ where T: Target {
     pub fn new(response: Option<Commands<'a, T>>, command: Option<Commands<'a, T>>) -> Self {
         Self {response, command}
     }
+
+    pub fn ack(command: Option<Commands<'a, T>>, ctx: T) -> Self {
+        Self::new(
+            Some(Commands::Acknowledge(Acknowledge::new(ctx))), command)
+    }
 }
 
 /// this parser parses the packet on a surface level

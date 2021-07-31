@@ -31,6 +31,9 @@ where T: Target {
     fn response(&mut self, response_data: &mut [u8]) -> Result<usize, Errors> {
         self.state.reset_write();
         self.state.start(response_data)?;
+
+        let ctx = self.state.ctx.clone();
+        self.state.write_all(response_data, ctx.reason())?;
         self.state.end(response_data)
     }
 }

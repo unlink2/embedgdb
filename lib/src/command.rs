@@ -12,10 +12,13 @@ pub trait SupportedCommands<'a, T>
 where T: Target {
     fn commands(&self, ctx: T, name: &'a [u8], args: Option<&'a [u8]>) -> Parsed<T> {
         match name {
+            b"?" => {
+                Parsed::ack(
+                    Some(Commands::Reason(ReasonCommand::new(ctx.clone()))), ctx)
+            },
             _ =>
-                Parsed::new(
-                    Some(Commands::Acknowledge(Acknowledge::new(ctx.clone()))),
-                    Some(Commands::NotImplemented(NotImplemented::new(ctx))))
+                Parsed::ack(
+                    Some(Commands::NotImplemented(NotImplemented::new(ctx.clone()))), ctx)
         }
     }
 }
@@ -32,6 +35,7 @@ where T: Target {
     NotImplemented(NotImplemented<'a, T>),
     Retransmit(Retransmit<'a, T>),
     Acknowledge(Acknowledge<'a, T>),
+    Reason(ReasonCommand<'a, T>)
 }
 
 impl<T> Command<T> for Commands<'_, T>
@@ -44,7 +48,8 @@ where T: Target {
                 | Self::AcknowledgeLast => Ok(0),
             Self::NotImplemented(c) => c.response(response_data),
             Self::Retransmit(c) => c.response(response_data),
-            Self::Acknowledge(c) => c.response(response_data)
+            Self::Acknowledge(c) => c.response(response_data),
+            Self::Reason(c) => c.response(response_data)
         }
     }
 }
@@ -67,7 +72,7 @@ where T: Target {
     pub fields: &'a [u8],
     pub current_write: usize,
     pub chksm: u32, // buffer for checksum
-    ctx: T
+    pub ctx: T
 }
 
 impl<'a, T> ResponseState<'a, T>
@@ -98,10 +103,17 @@ where T: Target {
 
         self.chksm += Parser::add_chksm(response_data);
         // write checksum byte
-        let chksum = Parser::to_hex_tuple((self.chksm % 256) as u8);
+        let chksm = (self.chksm % 256) as u8;
 
-        size += self.write_force(response_data, chksum.0)?;
-        size += self.write_force(response_data, chksum.1)?;
+        size += self.write_hex(response_data, chksm)?;
+
+        Ok(size)
+    }
+
+    pub fn write_hex(&mut self, response_data: &mut [u8], byte: u8) -> Result<usize, Errors> {
+        let byte = Parser::to_hex_tuple(byte);
+        let mut size = self.write_force(response_data, byte.0)?;
+        size += self.write_force(response_data, byte.1)?;
         Ok(size)
     }
 
@@ -111,7 +123,7 @@ where T: Target {
 
     pub fn error(&mut self, response_data: &mut [u8], _error: Errors) -> Result<usize, Errors> {
         // TODO write error code
-        self.write_all(response_data, b"E 00")
+        self.write_all(response_data, b"E00")
     }
 
     pub fn escape(byte: u8) -> u8 {
