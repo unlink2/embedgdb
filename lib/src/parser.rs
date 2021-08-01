@@ -225,6 +225,39 @@ impl<'a> Parser<'a> {
         }
     }
 
+    pub fn from_hex8(b: &[u8]) -> Option<u8> {
+        if b.len() != 2 {
+            None
+        } else {
+            let h = Self::from_hex(b[0])? as u8;
+            let l = Self::from_hex(b[1])? as u8;
+
+            Some(h << 4 | l)
+        }
+    }
+
+    pub fn from_hex16(b: &[u8]) -> Option<u16> {
+        if b.len() != 4 {
+            None
+        } else {
+            let h = Self::from_hex8(&b[..2])? as u16;
+            let l = Self::from_hex8(&b[2..])? as u16;
+
+            Some(h << 8 | l)
+        }
+    }
+
+    pub fn from_hex32(b: &[u8]) -> Option<u32> {
+        if b.len() != 8 {
+            None
+        } else {
+            let h = Self::from_hex16(&b[..4])? as u32;
+            let l = Self::from_hex16(&b[4..])? as u32;
+
+            Some(h << 16 | l)
+        }
+    }
+
     pub fn to_hex(b: u8) -> Option<u8> {
         if b >= 16 {
             None
@@ -261,6 +294,21 @@ mod tests {
     #[test]
     fn it_should_parse_hex_tupel() {
         assert_eq!(Parser::to_hex_tuple(0xA7), (b'a', b'7'));
+    }
+
+    #[test]
+    fn it_should_read_hex8() {
+        assert_eq!(Parser::from_hex8(&[b'A', b'B']).unwrap(), 0xAB);
+    }
+
+    #[test]
+    fn it_should_read_hex16() {
+        assert_eq!(Parser::from_hex16(&[b'A', b'B', b'c', b'd']).unwrap(), 0xABcd);
+    }
+
+    #[test]
+    fn it_should_read_hex32() {
+        assert_eq!(Parser::from_hex32(&[b'A', b'B', b'c', b'd', b'1', b'2', b'3', b'4']).unwrap(), 0xABcd1234);
     }
 
     #[test]
