@@ -10,7 +10,7 @@ impl<'a> SupportedCommands<'a> for DebugCommands {
 
 
 fn handle(mut stream: TcpStream) -> std::io::Result<()> {
-    let mut buffer = [0xFF; 1024];
+    let mut buffer = [0xFF; 2048];
 
     let mut target = VirtualTarget::new();
 
@@ -26,7 +26,7 @@ fn handle(mut stream: TcpStream) -> std::io::Result<()> {
 
                 if let Some(mut response) = result.response {
                     let mut rstream = BufferedStream::new();
-                    let size = response.response(&mut rstream, &mut target).unwrap_or(0);
+                    let size = response.response(&mut rstream, &mut target).unwrap();
 
                     println!("{} {:?} res >> {}", size, response, std::str::from_utf8(&rstream.buffer).unwrap_or(""));
                     if size > 0 {
@@ -36,7 +36,7 @@ fn handle(mut stream: TcpStream) -> std::io::Result<()> {
 
                 if let Some(mut command) = result.command {
                     let mut rstream = BufferedStream::new();
-                    let size = command.response(&mut rstream, &mut target).unwrap_or(0);
+                    let size = command.response(&mut rstream, &mut target).unwrap();
 
                     println!("{} {:?} cmd >> {}", size, command, std::str::from_utf8(&rstream.buffer).unwrap_or(""));
                     if size > 0 {

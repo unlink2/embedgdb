@@ -1,5 +1,6 @@
 use super::command::*;
 use super::error::Errors;
+use super::stream::Stream;
 
 // Holds the Acknowledge Packet and command packet
 
@@ -73,7 +74,7 @@ impl<'a> Parser<'a> {
 
         // read packet name
         // packet names either are terminated by #, space, comma or semicolon
-        let name = self.parse_token();
+        let name = self.parse_name();
 
         // only if not #
         let args = if self.peek() != b'#' {
@@ -101,8 +102,7 @@ impl<'a> Parser<'a> {
         match self.peek() {
             b'v' | b'q' => self.parse_token(),
             _ => {
-                self.advance();
-                &self.packet[self.current-1..self.current]
+                &self.packet[self.current..self.current+1]
             }
         }
     }
@@ -274,12 +274,42 @@ impl<'a> Parser<'a> {
         // we can unwrap here because it will always be valid
         (Self::to_hex(h).unwrap(), Self::to_hex(l).unwrap())
     }
+
+    pub fn to_hex8(b: u8, stream: &mut dyn Stream) -> Result<(), Errors> {
+        let t = Self::to_hex_tuple(b);
+        stream.write(t.0)?;
+        stream.write(t.1)?;
+        Ok(())
+    }
+
+    pub fn to_hex16(b: &[u8], stream: &mut dyn Stream) -> Result<(), Errors> {
+        if b.len() != 2 {
+            Err(Errors::OutOfDataError)
+        } else {
+            Self::to_hex8(b[0], stream)?;
+            Self::to_hex8(b[1], stream)?;
+            Ok(())
+        }
+    }
+
+    pub fn to_hex32(b: &[u8], stream: &mut dyn Stream) -> Result<(), Errors> {
+        if b.len() != 4 {
+            Err(Errors::OutOfDataError)
+        } else {
+            Self::to_hex8(b[0], stream)?;
+            Self::to_hex8(b[1], stream)?;
+            Self::to_hex8(b[2], stream)?;
+            Self::to_hex8(b[3], stream)?;
+            Ok(())
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::basic::required::*;
+    use crate::stream::BufferedStream;
 
     struct TestCommands;
     impl<'a> SupportedCommands<'a> for TestCommands {}
@@ -294,6 +324,27 @@ mod tests {
     #[test]
     fn it_should_parse_hex_tupel() {
         assert_eq!(Parser::to_hex_tuple(0xA7), (b'a', b'7'));
+    }
+
+    #[test]
+    fn it_should_write_hex8() {
+        let mut s = BufferedStream::new();
+        Parser::to_hex8(0xAF, &mut s).unwrap();
+        assert_eq!(&s.buffer[..2], b"af");
+    }
+
+    #[test]
+    fn it_should_write_hex16() {
+        let mut s = BufferedStream::new();
+        Parser::to_hex16(&[0x12, 0xAF], &mut s).unwrap();
+        assert_eq!(&s.buffer[..4], b"12af");
+    }
+
+    #[test]
+    fn it_should_write_hex32() {
+        let mut s = BufferedStream::new();
+        Parser::to_hex32(&[0xee, 0xdd, 0x12, 0xAF], &mut s).unwrap();
+        assert_eq!(&s.buffer[..8], b"eedd12af");
     }
 
     #[test]
@@ -354,6 +405,20 @@ mod tests {
         assert_eq!(parsed, Parsed::new(
             Some(Commands::Acknowledge(Acknowledge::new())),
             Some(Commands::ReadRegister(ReadRegistersCommand::new()))));
+    }
+
+    #[test]
+    fn it_should_read_name_long() {
+        let chksm = "$G64#b1".as_bytes();
+
+        let mut parser = Parser::new(chksm);
+
+        // must reply empty should reply with an empty packet!
+        let parsed = parser.parse_packet(&TestCommands);
+
+        assert_eq!(parsed, Parsed::new(
+            Some(Commands::Acknowledge(Acknowledge::new())),
+            Some(Commands::WriteRegister(WriteRegistersCommand::new(b"64")))));
     }
 
     #[test]

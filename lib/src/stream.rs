@@ -37,7 +37,7 @@ pub trait Stream {
 
 /// Sample stream with a fixed buffer
 pub struct BufferedStream {
-    pub buffer: [u8; 256],
+    pub buffer: [u8; 512],
     pub pos: usize,
     chksm: u32
 }
@@ -45,7 +45,7 @@ pub struct BufferedStream {
 impl BufferedStream {
     pub fn new() -> Self {
         Self {
-            buffer: [0; 256],
+            buffer: [0; 512],
             pos: 0,
             chksm: 0
         }

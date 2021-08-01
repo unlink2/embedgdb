@@ -10,7 +10,8 @@ use super::stream::Stream;
 // should return not implemented command by default!
 // There will be a few sample implementations of this function
 pub trait SupportedCommands<'a> {
-    fn commands(&self, name: &'a [u8], _args: Option<&'a [u8]>) -> Parsed<'a> {
+    fn commands(&self, name: &'a [u8], args: Option<&'a [u8]>) -> Parsed<'a> {
+        let args = args.unwrap_or(&[]);
         match name {
             b"?" => {
                 Parsed::ack(
@@ -18,6 +19,9 @@ pub trait SupportedCommands<'a> {
             },
             b"g" => {
               Parsed::ack(Some(Commands::ReadRegister(ReadRegistersCommand::new())))
+            },
+            b"G" => {
+                Parsed::ack(Some(Commands::WriteRegister(WriteRegistersCommand::new(args))))
             },
             _ =>
                 Parsed::ack(
@@ -38,7 +42,8 @@ pub enum Commands<'a> {
     Retransmit(Retransmit<'a>),
     Acknowledge(Acknowledge<'a>),
     Reason(ReasonCommand<'a>),
-    ReadRegister(ReadRegistersCommand<'a>)
+    ReadRegister(ReadRegistersCommand<'a>),
+    WriteRegister(WriteRegistersCommand<'a>)
 }
 
 impl Command for Commands<'_> {
@@ -53,6 +58,7 @@ impl Command for Commands<'_> {
             Self::Acknowledge(c) => c.response(stream, ctx),
             Self::Reason(c) => c.response(stream, ctx),
             Self::ReadRegister(c) => c.response(stream, ctx),
+            Self::WriteRegister(c) => c.response(stream, ctx)
         }
     }
 }
@@ -276,8 +282,8 @@ mod tests {
             i = i + 1;
         }
 
-        assert_eq!(stream.len(), 256);
-        assert_eq!(stream.pos(), 256);
+        assert_eq!(stream.len(), 512);
+        assert_eq!(stream.pos(), 512);
         let err = state.write_all(&mut stream, b"Hello").unwrap_err();
         assert_eq!(err, Errors::MemoryFilledInterupt);
     }

@@ -56,7 +56,36 @@ impl Command for ReadRegistersCommand<'_> {
         stream.reset();
         self.state.start(stream)?;
 
-        self.state.write_all(stream, ctx.rd_registers())?;
+        ctx.rd_registers(stream)?;
+        self.state.end(stream)
+    }
+}
+
+/**
+ * G
+ */
+
+#[derive(Debug, PartialEq)]
+pub struct WriteRegistersCommand<'a> {
+    state: ResponseWriter<'a>
+}
+
+impl<'a> WriteRegistersCommand<'a> {
+    pub fn new(args: &'a [u8]) -> Self {
+        Self {
+            state: ResponseWriter::new(args)
+        }
+    }
+}
+
+impl Command for WriteRegistersCommand<'_> {
+    fn response(&mut self, stream: &mut dyn Stream, ctx: &mut dyn Target) -> Result<usize, Errors> {
+        stream.reset();
+        self.state.start(stream)?;
+        match ctx.wr_registers(self.state.fields) {
+            Ok(_) => self.state.ok(stream)?,
+            Err(err) => self.state.error(stream, err)?
+        };
         self.state.end(stream)
     }
 }
