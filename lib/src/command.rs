@@ -23,6 +23,12 @@ pub trait SupportedCommands<'a> {
             b"G" => {
                 Parsed::ack(Some(Commands::WriteRegister(WriteRegistersCommand::new(args))))
             },
+            b"m" => {
+                Parsed::ack(Some(Commands::ReadMemory(ReadMemoryCommand::new(args))))
+            },
+            b"M" => {
+                Parsed::ack(Some(Commands::WriteMemory(WriteMemoryCommand::new(args))))
+            },
             _ =>
                 Parsed::ack(
                     Some(Commands::NotImplemented(NotImplemented::new())))
@@ -43,7 +49,9 @@ pub enum Commands<'a> {
     Acknowledge(Acknowledge<'a>),
     Reason(ReasonCommand<'a>),
     ReadRegister(ReadRegistersCommand<'a>),
-    WriteRegister(WriteRegistersCommand<'a>)
+    WriteRegister(WriteRegistersCommand<'a>),
+    ReadMemory(ReadMemoryCommand<'a>),
+    WriteMemory(WriteMemoryCommand<'a>),
 }
 
 impl Command for Commands<'_> {
@@ -58,7 +66,9 @@ impl Command for Commands<'_> {
             Self::Acknowledge(c) => c.response(stream, ctx),
             Self::Reason(c) => c.response(stream, ctx),
             Self::ReadRegister(c) => c.response(stream, ctx),
-            Self::WriteRegister(c) => c.response(stream, ctx)
+            Self::WriteRegister(c) => c.response(stream, ctx),
+            Self::ReadMemory(c) => c.response(stream, ctx),
+            Self::WriteMemory(c) => c.response(stream, ctx),
         }
     }
 }

@@ -21,6 +21,12 @@ impl<'a> Parsed<'a> {
     }
 }
 
+#[derive(Copy, Clone)]
+pub enum Endianness {
+    Big,
+    Little
+}
+
 /// this parser parses the packet on a surface level
 /// and passes on the resulting data to a packet struct
 /// which knows how to parse and execute itself and
@@ -94,8 +100,21 @@ impl<'a> Parser<'a> {
         if !self.verify_chksm() {
             return Self::retransmit(Errors::InvalidChecksum);
         }
+        // get to end
+        self.advance();
 
         cmds.commands(name, args)
+    }
+
+    // parses a single token
+    pub fn next_token(&mut self) -> Option<&'a [u8]> {
+        if !self.is_at_end() {
+            let token = self.parse_token();
+            self.advance();
+            Some(token)
+        } else {
+            None
+        }
     }
 
     pub fn parse_name(&mut self) -> &'a [u8] {
@@ -138,7 +157,7 @@ impl<'a> Parser<'a> {
     }
 
     pub fn is_at_end(&self) -> bool {
-        self.current >= self.packet.len()-1
+        self.current >= self.packet.len()
     }
 
     pub fn advance(&mut self) -> u8 {
@@ -225,37 +244,18 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn from_hex8(b: &[u8]) -> Option<u8> {
-        if b.len() != 2 {
-            None
-        } else {
-            let h = Self::from_hex(b[0])? as u8;
-            let l = Self::from_hex(b[1])? as u8;
+    /// non-size-bounded hex conversion
+    /// for when the size does not need to fit a particular
+    /// bound
+    pub fn from_hexu(b: &[u8]) -> Option<usize> {
+        let mut result = 0;
+        let shift_len = (b.len()-1)*4;
+        for (i, byte) in b.iter().enumerate() {
+            let val = Self::from_hex(*byte)? as usize;
 
-            Some(h << 4 | l)
+            result |= val << (shift_len-4*i);
         }
-    }
-
-    pub fn from_hex16(b: &[u8]) -> Option<u16> {
-        if b.len() != 4 {
-            None
-        } else {
-            let h = Self::from_hex8(&b[..2])? as u16;
-            let l = Self::from_hex8(&b[2..])? as u16;
-
-            Some(h << 8 | l)
-        }
-    }
-
-    pub fn from_hex32(b: &[u8]) -> Option<u32> {
-        if b.len() != 8 {
-            None
-        } else {
-            let h = Self::from_hex16(&b[..4])? as u32;
-            let l = Self::from_hex16(&b[4..])? as u32;
-
-            Some(h << 16 | l)
-        }
+        Some(result)
     }
 
     pub fn to_hex(b: u8) -> Option<u8> {
@@ -275,6 +275,8 @@ impl<'a> Parser<'a> {
         (Self::to_hex(h).unwrap(), Self::to_hex(l).unwrap())
     }
 
+    // converts a stream of bytes to hex and write it to
+    // the output stream
     pub fn to_hex8(b: u8, stream: &mut dyn Stream) -> Result<(), Errors> {
         let t = Self::to_hex_tuple(b);
         stream.write(t.0)?;
@@ -282,26 +284,11 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    pub fn to_hex16(b: &[u8], stream: &mut dyn Stream) -> Result<(), Errors> {
-        if b.len() != 2 {
-            Err(Errors::OutOfDataError)
-        } else {
-            Self::to_hex8(b[0], stream)?;
-            Self::to_hex8(b[1], stream)?;
-            Ok(())
+    pub fn to_hexu(b: &[u8], stream: &mut dyn Stream) -> Result<(), Errors> {
+        for byte in b {
+            Self::to_hex8(*byte, stream)?;
         }
-    }
-
-    pub fn to_hex32(b: &[u8], stream: &mut dyn Stream) -> Result<(), Errors> {
-        if b.len() != 4 {
-            Err(Errors::OutOfDataError)
-        } else {
-            Self::to_hex8(b[0], stream)?;
-            Self::to_hex8(b[1], stream)?;
-            Self::to_hex8(b[2], stream)?;
-            Self::to_hex8(b[3], stream)?;
-            Ok(())
-        }
+        Ok(())
     }
 }
 
@@ -336,30 +323,44 @@ mod tests {
     #[test]
     fn it_should_write_hex16() {
         let mut s = BufferedStream::new();
-        Parser::to_hex16(&[0x12, 0xAF], &mut s).unwrap();
+        Parser::to_hexu(&[0x12, 0xAF], &mut s).unwrap();
         assert_eq!(&s.buffer[..4], b"12af");
     }
 
     #[test]
     fn it_should_write_hex32() {
         let mut s = BufferedStream::new();
-        Parser::to_hex32(&[0xee, 0xdd, 0x12, 0xAF], &mut s).unwrap();
+        Parser::to_hexu(&[0xee, 0xdd, 0x12, 0xAF], &mut s).unwrap();
         assert_eq!(&s.buffer[..8], b"eedd12af");
     }
 
     #[test]
     fn it_should_read_hex8() {
-        assert_eq!(Parser::from_hex8(&[b'A', b'B']).unwrap(), 0xAB);
+        assert_eq!(Parser::from_hexu(&[b'A', b'B']).unwrap(), 0xAB);
     }
 
     #[test]
     fn it_should_read_hex16() {
-        assert_eq!(Parser::from_hex16(&[b'A', b'B', b'c', b'd']).unwrap(), 0xABcd);
+        assert_eq!(Parser::from_hexu(&[b'A', b'B', b'c', b'd']).unwrap(), 0xABcd);
     }
 
     #[test]
     fn it_should_read_hex32() {
-        assert_eq!(Parser::from_hex32(&[b'A', b'B', b'c', b'd', b'1', b'2', b'3', b'4']).unwrap(), 0xABcd1234);
+        assert_eq!(Parser::from_hexu(&[b'A', b'B', b'c', b'd', b'1', b'2', b'3', b'4']).unwrap(), 0xABcd1234);
+    }
+
+    #[test]
+    fn it_should_read_hex_be() {
+        let mut s = BufferedStream::new();
+        let be = 0xBFC00000 as u32;
+        let mut be_bytes = be.to_be_bytes();
+        be_bytes.reverse();
+        Parser::to_hexu(&be_bytes, &mut s).unwrap();
+
+        assert_eq!(s.buffer[0..8], b"0000c0bf"[..]);
+        dbg!(&s.buffer[0..8]);
+        assert_eq!((Parser::from_hexu(&s.buffer[0..8]).unwrap() as u32).to_le_bytes(),
+             be.to_be_bytes()[..]);
     }
 
     #[test]
@@ -440,5 +441,28 @@ mod tests {
 
         let _ = parser.parse_packet(&TestCommands);
         assert!(parser.is_at_end());
+    }
+
+    #[test]
+    fn it_should_parse_tokens() {
+        let packet = b"token1;token2,token3";
+
+        let mut parser = Parser::new(packet);
+
+        let t1 = parser.next_token();
+        assert_eq!(t1, Some(&b"token1"[..]));
+        assert!(!parser.is_at_end());
+
+        let t2 = parser.next_token();
+        assert!(!parser.is_at_end());
+        assert_eq!(t2, Some(&b"token2"[..]));
+
+        let t3 = parser.next_token();
+        assert!(parser.is_at_end());
+        assert_eq!(t3, Some(&b"token3"[..]));
+
+        let t4 = parser.next_token();
+        assert!(parser.is_at_end());
+        assert_eq!(t4, None);
     }
 }

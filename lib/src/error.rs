@@ -6,5 +6,9 @@ pub enum Errors {
     InvalidChecksum,
     UnexpectedIntroduction,
     CommandError,
-    OutOfDataError
+    OutOfDataError,
+    BadNumber,
+    InsufficientArguments,
+    AddressOutOfRange,
+    LengthMismatch
 }
