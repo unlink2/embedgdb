@@ -1,4 +1,3 @@
-
 #[derive(Debug, Eq, PartialEq)]
 pub enum Errors {
     MemoryFilledInterupt,
@@ -10,5 +9,5 @@ pub enum Errors {
     BadNumber,
     InsufficientArguments,
     AddressOutOfRange,
-    LengthMismatch
+    LengthMismatch,
 }

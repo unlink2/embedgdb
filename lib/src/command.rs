@@ -1,8 +1,8 @@
-use super::error::Errors;
-use super::target::Target;
-use super::parser::{Parsed, Parser};
 use super::basic::required::*;
+use super::error::Errors;
+use super::parser::{Parsed, Parser};
 use super::stream::Stream;
+use super::target::Target;
 
 // This trait builds a command based on the parer's output
 // this allows each target platform to specify exactly which commands
@@ -13,25 +13,14 @@ pub trait SupportedCommands<'a> {
     fn commands(&self, name: &'a [u8], args: Option<&'a [u8]>) -> Parsed<'a> {
         let args = args.unwrap_or(&[]);
         match name {
-            b"?" => {
-                Parsed::ack(
-                    Some(Commands::Reason(ReasonCommand::new())))
-            },
-            b"g" => {
-              Parsed::ack(Some(Commands::ReadRegister(ReadRegistersCommand::new())))
-            },
-            b"G" => {
-                Parsed::ack(Some(Commands::WriteRegister(WriteRegistersCommand::new(args))))
-            },
-            b"m" => {
-                Parsed::ack(Some(Commands::ReadMemory(ReadMemoryCommand::new(args))))
-            },
-            b"M" => {
-                Parsed::ack(Some(Commands::WriteMemory(WriteMemoryCommand::new(args))))
-            },
-            _ =>
-                Parsed::ack(
-                    Some(Commands::NotImplemented(NotImplemented::new())))
+            b"?" => Parsed::ack(Some(Commands::Reason(ReasonCommand::new()))),
+            b"g" => Parsed::ack(Some(Commands::ReadRegister(ReadRegistersCommand::new()))),
+            b"G" => Parsed::ack(Some(Commands::WriteRegister(WriteRegistersCommand::new(
+                args,
+            )))),
+            b"m" => Parsed::ack(Some(Commands::ReadMemory(ReadMemoryCommand::new(args)))),
+            b"M" => Parsed::ack(Some(Commands::WriteMemory(WriteMemoryCommand::new(args)))),
+            _ => Parsed::ack(Some(Commands::NotImplemented(NotImplemented::new()))),
         }
     }
 }
@@ -42,7 +31,7 @@ pub trait SupportedCommands<'a> {
 pub enum Commands<'a> {
     NoCommand,
     Unsupported,
-    RetransmitLast, // this is returned if the packet received is a -
+    RetransmitLast,  // this is returned if the packet received is a -
     AcknowledgeLast, // this is returned if the packet received a +
     NotImplemented(NotImplemented<'a>),
     Retransmit(Retransmit<'a>),
@@ -57,10 +46,9 @@ pub enum Commands<'a> {
 impl Command for Commands<'_> {
     fn response(&mut self, stream: &mut dyn Stream, ctx: &mut dyn Target) -> Result<usize, Errors> {
         match self {
-            Self::NoCommand
-                | Self::Unsupported
-                | Self::RetransmitLast
-                | Self::AcknowledgeLast => Ok(0),
+            Self::NoCommand | Self::Unsupported | Self::RetransmitLast | Self::AcknowledgeLast => {
+                Ok(0)
+            }
             Self::NotImplemented(c) => c.response(stream, ctx),
             Self::Retransmit(c) => c.response(stream, ctx),
             Self::Acknowledge(c) => c.response(stream, ctx),
@@ -91,9 +79,7 @@ pub struct ResponseWriter<'a> {
 
 impl<'a> ResponseWriter<'a> {
     pub fn new(fields: &'a [u8]) -> Self {
-        Self {
-            fields,
-        }
+        Self { fields }
     }
 
     // starts a packet
@@ -156,12 +142,8 @@ impl<'a> ResponseWriter<'a> {
     pub fn write(&mut self, stream: &mut dyn Stream, byte: u8) -> Result<usize, Errors> {
         match byte {
             // those bytes must always be escaped!
-            b'}' | b'$' | b'#' | b'*' => {
-                self.write_escape(stream, byte)
-            },
-            _ => {
-                self.write_force(stream, byte)
-            }
+            b'}' | b'$' | b'#' | b'*' => self.write_escape(stream, byte),
+            _ => self.write_force(stream, byte),
         }
     }
 }
@@ -173,20 +155,24 @@ impl<'a> ResponseWriter<'a> {
 #[derive(Debug, PartialEq)]
 pub struct Retransmit<'a> {
     state: ResponseWriter<'a>,
-    error: Errors
+    error: Errors,
 }
 
 impl<'a> Retransmit<'a> {
     pub fn new(error: Errors) -> Self {
         Self {
             state: ResponseWriter::new(&[]),
-            error
+            error,
         }
     }
 }
 
 impl Command for Retransmit<'_> {
-    fn response(&mut self, stream: &mut dyn Stream, _ctx: &mut dyn Target) -> Result<usize, Errors> {
+    fn response(
+        &mut self,
+        stream: &mut dyn Stream,
+        _ctx: &mut dyn Target,
+    ) -> Result<usize, Errors> {
         stream.reset();
         self.state.write(stream, b'-')
     }
@@ -198,19 +184,23 @@ impl Command for Retransmit<'_> {
 
 #[derive(Debug, PartialEq)]
 pub struct Acknowledge<'a> {
-    state: ResponseWriter<'a>
+    state: ResponseWriter<'a>,
 }
 
 impl<'a> Acknowledge<'a> {
     pub fn new() -> Self {
         Self {
-            state: ResponseWriter::new(&[])
+            state: ResponseWriter::new(&[]),
         }
     }
 }
 
 impl Command for Acknowledge<'_> {
-    fn response(&mut self, stream: &mut dyn Stream, _ctx: &mut dyn Target) -> Result<usize, Errors> {
+    fn response(
+        &mut self,
+        stream: &mut dyn Stream,
+        _ctx: &mut dyn Target,
+    ) -> Result<usize, Errors> {
         stream.reset();
         self.state.write(stream, b'+')
     }
@@ -222,19 +212,23 @@ impl Command for Acknowledge<'_> {
 
 #[derive(Debug, PartialEq)]
 pub struct NotImplemented<'a> {
-    state: ResponseWriter<'a>
+    state: ResponseWriter<'a>,
 }
 
 impl<'a> NotImplemented<'a> {
     pub fn new() -> Self {
         Self {
-            state: ResponseWriter::new(&[])
+            state: ResponseWriter::new(&[]),
         }
     }
 }
 
 impl Command for NotImplemented<'_> {
-    fn response(&mut self, stream: &mut dyn Stream, _ctx: &mut dyn Target) -> Result<usize, Errors> {
+    fn response(
+        &mut self,
+        stream: &mut dyn Stream,
+        _ctx: &mut dyn Target,
+    ) -> Result<usize, Errors> {
         stream.reset();
         let mut size = self.state.start(stream)?;
         size += self.state.end(stream)?;
@@ -252,8 +246,7 @@ mod tests {
 
     #[derive(Debug, Clone, PartialEq)]
     struct TestCtx;
-    impl Target for TestCtx {
-    }
+    impl Target for TestCtx {}
 
     #[test]
     fn it_should_write_data() {

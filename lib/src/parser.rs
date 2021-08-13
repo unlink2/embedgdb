@@ -7,24 +7,23 @@ use super::stream::Stream;
 #[derive(Debug, PartialEq)]
 pub struct Parsed<'a> {
     pub response: Option<Commands<'a>>,
-    pub command: Option<Commands<'a>>
+    pub command: Option<Commands<'a>>,
 }
 
 impl<'a> Parsed<'a> {
     pub fn new(response: Option<Commands<'a>>, command: Option<Commands<'a>>) -> Self {
-        Self {response, command}
+        Self { response, command }
     }
 
     pub fn ack(command: Option<Commands<'a>>) -> Self {
-        Self::new(
-            Some(Commands::Acknowledge(Acknowledge::new())), command)
+        Self::new(Some(Commands::Acknowledge(Acknowledge::new())), command)
     }
 }
 
 #[derive(Copy, Clone)]
 pub enum Endianness {
     Big,
-    Little
+    Little,
 }
 
 /// this parser parses the packet on a surface level
@@ -49,15 +48,11 @@ pub struct Parser<'a> {
 
 impl<'a> Parser<'a> {
     pub fn new(packet: &'a [u8]) -> Self {
-        Self {
-            packet,
-            current: 0
-        }
+        Self { packet, current: 0 }
     }
 
     fn retransmit(error: Errors) -> Parsed<'a> {
-        Parsed::new(
-            Some(Commands::Retransmit(Retransmit::new(error))), None)
+        Parsed::new(Some(Commands::Retransmit(Retransmit::new(error))), None)
     }
 
     // packet layout:
@@ -68,7 +63,7 @@ impl<'a> Parser<'a> {
         // there are 2 special cases where there is no checksum
         if self.is_match(b'-') {
             return Parsed::new(Some(Commands::RetransmitLast), None);
-        } else if self.is_match(b'+')  {
+        } else if self.is_match(b'+') {
             return Parsed::new(Some(Commands::AcknowledgeLast), None);
         }
 
@@ -85,7 +80,7 @@ impl<'a> Parser<'a> {
         // only if not #
         let args = if self.peek() != b'#' {
             self.advance(); // must be other terminator, skip it
-            // read rest of data, those will be parsed when the packet is interpreted/executed
+                            // read rest of data, those will be parsed when the packet is interpreted/executed
             Some(self.parse_until_end())
         } else {
             None
@@ -120,9 +115,7 @@ impl<'a> Parser<'a> {
     pub fn parse_name(&mut self) -> &'a [u8] {
         match self.peek() {
             b'v' | b'q' => self.parse_token(),
-            _ => {
-                &self.packet[self.current..self.current+1]
-            }
+            _ => &self.packet[self.current..self.current + 1],
         }
     }
 
@@ -130,8 +123,7 @@ impl<'a> Parser<'a> {
     /// and returns a slice containing it
     pub fn parse_token(&mut self) -> &'a [u8] {
         let start = self.current;
-        while !self.is_at_end()
-            && !self.is_term() {
+        while !self.is_at_end() && !self.is_term() {
             self.advance();
         }
         &self.packet[start..self.current]
@@ -142,8 +134,7 @@ impl<'a> Parser<'a> {
     // parsed in a later step
     pub fn parse_until_end(&mut self) -> &'a [u8] {
         let start = self.current;
-        while self.peek() != b'#'
-            && !self.is_at_end() {
+        while self.peek() != b'#' && !self.is_at_end() {
             self.advance();
         }
         &self.packet[start..self.current]
@@ -170,7 +161,7 @@ impl<'a> Parser<'a> {
     }
 
     pub fn next(&self) -> u8 {
-        *self.packet.get(self.current+1).unwrap_or(&b'\0')
+        *self.packet.get(self.current + 1).unwrap_or(&b'\0')
     }
 
     pub fn is_match(&mut self, c: u8) -> bool {
@@ -208,7 +199,7 @@ impl<'a> Parser<'a> {
             match *b {
                 b'$' => (),
                 b'#' => break 'cloop,
-                _ => sum += *b as u32
+                _ => sum += *b as u32,
             }
         }
         return sum;
@@ -224,8 +215,7 @@ impl<'a> Parser<'a> {
     }
 
     pub fn is_hex(b: u8) -> bool {
-        (b >= b'a' && b <= b'f')
-            || (b >= b'A' && b <= b'F')
+        (b >= b'a' && b <= b'f') || (b >= b'A' && b <= b'F')
     }
 
     pub fn is_hex_digit(b: u8) -> bool {
@@ -249,11 +239,11 @@ impl<'a> Parser<'a> {
     /// bound
     pub fn from_hexu(b: &[u8]) -> Option<usize> {
         let mut result = 0;
-        let shift_len = (b.len()-1)*4;
+        let shift_len = (b.len() - 1) * 4;
         for (i, byte) in b.iter().enumerate() {
             let val = Self::from_hex(*byte)? as usize;
 
-            result |= val << (shift_len-4*i);
+            result |= val << (shift_len - 4 * i);
         }
         Some(result)
     }
@@ -341,12 +331,18 @@ mod tests {
 
     #[test]
     fn it_should_read_hex16() {
-        assert_eq!(Parser::from_hexu(&[b'A', b'B', b'c', b'd']).unwrap(), 0xABcd);
+        assert_eq!(
+            Parser::from_hexu(&[b'A', b'B', b'c', b'd']).unwrap(),
+            0xABcd
+        );
     }
 
     #[test]
     fn it_should_read_hex32() {
-        assert_eq!(Parser::from_hexu(&[b'A', b'B', b'c', b'd', b'1', b'2', b'3', b'4']).unwrap(), 0xABcd1234);
+        assert_eq!(
+            Parser::from_hexu(&[b'A', b'B', b'c', b'd', b'1', b'2', b'3', b'4']).unwrap(),
+            0xABcd1234
+        );
     }
 
     #[test]
@@ -359,8 +355,10 @@ mod tests {
 
         assert_eq!(s.buffer[0..8], b"0000c0bf"[..]);
         dbg!(&s.buffer[0..8]);
-        assert_eq!((Parser::from_hexu(&s.buffer[0..8]).unwrap() as u32).to_le_bytes(),
-             be.to_be_bytes()[..]);
+        assert_eq!(
+            (Parser::from_hexu(&s.buffer[0..8]).unwrap() as u32).to_le_bytes(),
+            be.to_be_bytes()[..]
+        );
     }
 
     #[test]
@@ -377,9 +375,13 @@ mod tests {
         // must reply empty should reply with an empty packet!
         let parsed = parser.parse_packet(&TestCommands);
 
-        assert_eq!(parsed, Parsed::new(
-            Some(Commands::Acknowledge(Acknowledge::new())),
-            Some(Commands::NotImplemented(NotImplemented::new()))));
+        assert_eq!(
+            parsed,
+            Parsed::new(
+                Some(Commands::Acknowledge(Acknowledge::new())),
+                Some(Commands::NotImplemented(NotImplemented::new()))
+            )
+        );
     }
 
     #[test]
@@ -403,9 +405,13 @@ mod tests {
         // must reply empty should reply with an empty packet!
         let parsed = parser.parse_packet(&TestCommands);
 
-        assert_eq!(parsed, Parsed::new(
-            Some(Commands::Acknowledge(Acknowledge::new())),
-            Some(Commands::ReadRegister(ReadRegistersCommand::new()))));
+        assert_eq!(
+            parsed,
+            Parsed::new(
+                Some(Commands::Acknowledge(Acknowledge::new())),
+                Some(Commands::ReadRegister(ReadRegistersCommand::new()))
+            )
+        );
     }
 
     #[test]
@@ -417,9 +423,13 @@ mod tests {
         // must reply empty should reply with an empty packet!
         let parsed = parser.parse_packet(&TestCommands);
 
-        assert_eq!(parsed, Parsed::new(
-            Some(Commands::Acknowledge(Acknowledge::new())),
-            Some(Commands::WriteRegister(WriteRegistersCommand::new(b"64")))));
+        assert_eq!(
+            parsed,
+            Parsed::new(
+                Some(Commands::Acknowledge(Acknowledge::new())),
+                Some(Commands::WriteRegister(WriteRegistersCommand::new(b"64")))
+            )
+        );
     }
 
     #[test]
@@ -429,9 +439,13 @@ mod tests {
 
         let parsed = parser.parse_packet(&TestCommands);
 
-        assert_eq!(parsed, Parsed::new(
-            Some(Commands::Acknowledge(Acknowledge::new())),
-            Some(Commands::NotImplemented(NotImplemented::new()))));
+        assert_eq!(
+            parsed,
+            Parsed::new(
+                Some(Commands::Acknowledge(Acknowledge::new())),
+                Some(Commands::NotImplemented(NotImplemented::new()))
+            )
+        );
     }
 
     #[test]

@@ -39,7 +39,7 @@ pub trait Stream {
 pub struct BufferedStream {
     pub buffer: [u8; 512],
     pub pos: usize,
-    chksm: u32
+    chksm: u32,
 }
 
 impl BufferedStream {
@@ -47,7 +47,7 @@ impl BufferedStream {
         Self {
             buffer: [0; 512],
             pos: 0,
-            chksm: 0
+            chksm: 0,
         }
     }
 }
@@ -72,7 +72,7 @@ impl Stream for BufferedStream {
 
     fn write(&mut self, byte: u8) -> Result<usize, Errors> {
         let start = self.pos;
-        if self.len() < self.pos()+1 {
+        if self.len() < self.pos() + 1 {
             // attempt to handle memory fill
             if !self.resize() {
                 return Err(Errors::MemoryFilledInterupt);
@@ -88,6 +88,6 @@ impl Stream for BufferedStream {
 
         self.buffer[self.pos] = byte;
         self.pos += 1;
-        Ok(self.pos-start)
+        Ok(self.pos - start)
     }
 }

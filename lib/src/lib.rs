@@ -4,15 +4,15 @@
 #[macro_use]
 extern crate std;
 
-pub use parser::*;
 pub use command::*;
 pub use error::*;
-pub use target::*;
+pub use parser::*;
 pub use stream::*;
+pub use target::*;
 
-pub mod parser;
+pub mod basic;
 pub mod command;
 pub mod error;
-pub mod target;
-pub mod basic;
+pub mod parser;
 pub mod stream;
+pub mod target;

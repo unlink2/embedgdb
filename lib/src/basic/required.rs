@@ -3,10 +3,10 @@
  */
 
 use crate::command::*;
-use crate::parser::Parser;
-use crate::target::Target;
 use crate::error::Errors;
+use crate::parser::Parser;
 use crate::stream::Stream;
+use crate::target::Target;
 
 /**
  * ?
@@ -14,13 +14,13 @@ use crate::stream::Stream;
 
 #[derive(Debug, PartialEq)]
 pub struct ReasonCommand<'a> {
-    state: ResponseWriter<'a>
+    state: ResponseWriter<'a>,
 }
 
 impl<'a> ReasonCommand<'a> {
     pub fn new() -> Self {
         Self {
-            state: ResponseWriter::new(&[])
+            state: ResponseWriter::new(&[]),
         }
     }
 }
@@ -40,13 +40,13 @@ impl Command for ReasonCommand<'_> {
  */
 #[derive(Debug, PartialEq)]
 pub struct ReadRegistersCommand<'a> {
-    state: ResponseWriter<'a>
+    state: ResponseWriter<'a>,
 }
 
 impl<'a> ReadRegistersCommand<'a> {
     pub fn new() -> Self {
         Self {
-            state: ResponseWriter::new(&[])
+            state: ResponseWriter::new(&[]),
         }
     }
 }
@@ -68,13 +68,13 @@ impl Command for ReadRegistersCommand<'_> {
 
 #[derive(Debug, PartialEq)]
 pub struct WriteRegistersCommand<'a> {
-    state: ResponseWriter<'a>
+    state: ResponseWriter<'a>,
 }
 
 impl<'a> WriteRegistersCommand<'a> {
     pub fn new(args: &'a [u8]) -> Self {
         Self {
-            state: ResponseWriter::new(args)
+            state: ResponseWriter::new(args),
         }
     }
 }
@@ -85,7 +85,7 @@ impl Command for WriteRegistersCommand<'_> {
         self.state.start(stream)?;
         match ctx.wr_registers(self.state.fields) {
             Ok(_) => self.state.ok(stream)?,
-            Err(err) => self.state.error(stream, err)?
+            Err(err) => self.state.error(stream, err)?,
         };
         self.state.end(stream)?;
         Ok(stream.pos())
@@ -97,13 +97,13 @@ impl Command for WriteRegistersCommand<'_> {
  */
 #[derive(Debug, PartialEq)]
 pub struct ReadMemoryCommand<'a> {
-    state: ResponseWriter<'a>
+    state: ResponseWriter<'a>,
 }
 
 impl<'a> ReadMemoryCommand<'a> {
     pub fn new(args: &'a [u8]) -> Self {
         Self {
-            state: ResponseWriter::new(args)
+            state: ResponseWriter::new(args),
         }
     }
 }
@@ -140,13 +140,13 @@ impl Command for ReadMemoryCommand<'_> {
  */
 #[derive(Debug, PartialEq)]
 pub struct WriteMemoryCommand<'a> {
-    state: ResponseWriter<'a>
+    state: ResponseWriter<'a>,
 }
 
 impl<'a> WriteMemoryCommand<'a> {
     pub fn new(args: &'a [u8]) -> Self {
         Self {
-            state: ResponseWriter::new(args)
+            state: ResponseWriter::new(args),
         }
     }
 }
@@ -167,18 +167,18 @@ impl Command for WriteMemoryCommand<'_> {
             let size = Parser::from_hexu(size);
 
             // mismatched lenght!
-                if let (Some(addr), Some(size)) = (addr, size) {
-                    if bytes.len()/2 != size {
-                        Err(Errors::LengthMismatch)
-                    } else {
-                        ctx.wr_memory(addr as *const u8, &bytes)?;
-                        self.state.ok(stream)?;
-                        self.state.end(stream)?;
-                        Ok(stream.pos())
-                    }
+            if let (Some(addr), Some(size)) = (addr, size) {
+                if bytes.len() / 2 != size {
+                    Err(Errors::LengthMismatch)
                 } else {
-                    Err(Errors::BadNumber)
+                    ctx.wr_memory(addr as *const u8, &bytes)?;
+                    self.state.ok(stream)?;
+                    self.state.end(stream)?;
+                    Ok(stream.pos())
                 }
+            } else {
+                Err(Errors::BadNumber)
+            }
         } else {
             Err(Errors::InsufficientArguments)
         }
