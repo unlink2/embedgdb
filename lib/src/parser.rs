@@ -238,6 +238,10 @@ impl<'a> Parser<'a> {
     /// for when the size does not need to fit a particular
     /// bound
     pub fn from_hexu(b: &[u8]) -> Option<usize> {
+        // filter for the first \0 if it exists
+        let end_index = b.iter().position(|&v| v == 0).unwrap_or(b.len());
+        let b = &b[0..end_index];
+
         let mut result = 0;
         let shift_len = (b.len() - 1) * 4;
         for (i, byte) in b.iter().enumerate() {
@@ -346,6 +350,14 @@ mod tests {
     }
 
     #[test]
+    fn it_should_read_hex32_with_padding() {
+        assert_eq!(
+            Parser::from_hexu(&[b'A', b'B', b'c', b'd', b'1', b'2', b'3', 0, 0, 0, 0, 0]).unwrap(),
+            0xABcd123
+        );
+    }
+
+    #[test]
     fn it_should_read_hex_be() {
         let mut s = BufferedStream::new();
         let be = 0xBFC00000 as u32;
@@ -354,7 +366,6 @@ mod tests {
         Parser::to_hexu(&be_bytes, &mut s).unwrap();
 
         assert_eq!(s.buffer[0..8], b"0000c0bf"[..]);
-        dbg!(&s.buffer[0..8]);
         assert_eq!(
             (Parser::from_hexu(&s.buffer[0..8]).unwrap() as u32).to_le_bytes(),
             be.to_be_bytes()[..]
