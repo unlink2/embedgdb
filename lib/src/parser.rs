@@ -334,6 +334,11 @@ mod tests {
     }
 
     #[test]
+    fn it_should_read_hex8_with_padding() {
+        assert_eq!(Parser::from_hexu(&[b'A', b'B', 0, 0, 0]).unwrap(), 0xAB);
+    }
+
+    #[test]
     fn it_should_read_hex16() {
         assert_eq!(
             Parser::from_hexu(&[b'A', b'B', b'c', b'd']).unwrap(),
