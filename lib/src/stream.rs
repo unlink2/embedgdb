@@ -9,6 +9,10 @@ pub trait Stream {
         0
     }
 
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// current write position or 0
     fn pos(&self) -> usize {
         0
@@ -40,6 +44,12 @@ pub struct BufferedStream {
     pub buffer: [u8; 512],
     pub pos: usize,
     chksm: u32,
+}
+
+impl Default for BufferedStream {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl BufferedStream {

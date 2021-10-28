@@ -187,6 +187,12 @@ pub struct Acknowledge<'a> {
     state: ResponseWriter<'a>,
 }
 
+impl<'a> Default for Acknowledge<'a> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<'a> Acknowledge<'a> {
     pub fn new() -> Self {
         Self {
@@ -213,6 +219,12 @@ impl Command for Acknowledge<'_> {
 #[derive(Debug, PartialEq)]
 pub struct NotImplemented<'a> {
     state: ResponseWriter<'a>,
+}
+
+impl<'a> Default for NotImplemented<'a> {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<'a> NotImplemented<'a> {

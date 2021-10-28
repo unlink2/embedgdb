@@ -43,7 +43,7 @@ fn handle(mut stream: TcpStream) -> std::io::Result<()> {
                         std::str::from_utf8(&rstream.buffer).unwrap_or("")
                     );
                     if size > 0 {
-                        stream.write(&rstream.buffer)?;
+                        stream.write_all(&rstream.buffer)?;
                     }
                 }
 
@@ -58,7 +58,7 @@ fn handle(mut stream: TcpStream) -> std::io::Result<()> {
                         std::str::from_utf8(&rstream.buffer).unwrap_or("")
                     );
                     if size > 0 {
-                        stream.write(&rstream.buffer)?;
+                        stream.write_all(&rstream.buffer)?;
                     }
                 }
             }

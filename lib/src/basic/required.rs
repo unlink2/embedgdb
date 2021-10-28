@@ -43,6 +43,12 @@ pub struct ReadRegistersCommand<'a> {
     state: ResponseWriter<'a>,
 }
 
+impl<'a> Default for ReadRegistersCommand<'a> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<'a> ReadRegistersCommand<'a> {
     pub fn new() -> Self {
         Self {
@@ -69,6 +75,12 @@ impl Command for ReadRegistersCommand<'_> {
 #[derive(Debug, PartialEq)]
 pub struct WriteRegistersCommand<'a> {
     state: ResponseWriter<'a>,
+}
+
+impl<'a> Default for ReasonCommand<'a> {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<'a> WriteRegistersCommand<'a> {
@@ -171,7 +183,7 @@ impl Command for WriteMemoryCommand<'_> {
                 if bytes.len() / 2 != size {
                     Err(Errors::LengthMismatch)
                 } else {
-                    ctx.wr_memory(addr as *const u8, &bytes)?;
+                    ctx.wr_memory(addr as *const u8, bytes)?;
                     self.state.ok(stream)?;
                     self.state.end(stream)?;
                     Ok(stream.pos())

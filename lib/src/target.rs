@@ -52,12 +52,18 @@ pub struct VirtualTarget {
     memory: [u8; 512],
 }
 
+impl Default for VirtualTarget {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl VirtualTarget {
     pub fn new() -> Self {
-        let mut registers = [(1 as u32).to_be(); 38];
+        let mut registers = [(1_u32).to_be(); 38];
 
         // set PC to reset vector
-        registers[37] = (0xBFC00000 as u32).to_be();
+        registers[37] = (0xBFC00000_u32).to_be();
         Self {
             memory: [0; 512],
             registers,
@@ -85,7 +91,7 @@ impl Target for VirtualTarget {
         } else {
             let c = data.chunks(8);
             for (i, bytes) in c.enumerate() {
-                match Parser::from_hexu(&bytes) {
+                match Parser::from_hexu(bytes) {
                     Some(value) => self.registers[i] = value as u32,
                     _ => return Err(Errors::CommandError),
                 }

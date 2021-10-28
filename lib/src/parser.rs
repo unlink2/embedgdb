@@ -141,10 +141,7 @@ impl<'a> Parser<'a> {
     }
 
     pub fn is_term(&self) -> bool {
-        match self.peek() {
-            b' ' | b',' | b'#' | b';' | b':' => true,
-            _ => false,
-        }
+        matches!(self.peek(), b' ' | b',' | b'#' | b';' | b':')
     }
 
     pub fn is_at_end(&self) -> bool {
@@ -202,7 +199,7 @@ impl<'a> Parser<'a> {
                 _ => sum += *b as u32,
             }
         }
-        return sum;
+        sum
     }
 
     // adds a buffer to chksm
@@ -211,11 +208,11 @@ impl<'a> Parser<'a> {
     }
 
     pub fn is_digit(b: u8) -> bool {
-        b >= b'0' && b <= b'9'
+        (b'0'..=b'9').contains(&b)
     }
 
     pub fn is_hex(b: u8) -> bool {
-        (b >= b'a' && b <= b'f') || (b >= b'A' && b <= b'F')
+        (b'a'..=b'f').contains(&b) || (b'A'..=b'F').contains(&b)
     }
 
     pub fn is_hex_digit(b: u8) -> bool {
@@ -223,11 +220,11 @@ impl<'a> Parser<'a> {
     }
 
     pub fn from_hex(b: u8) -> Option<u8> {
-        if b >= b'0' && b <= b'9' {
+        if (b'0'..=b'9').contains(&b) {
             Some(b - b'0')
-        } else if b >= b'A' && b <= b'F' {
+        } else if (b'A'..=b'F').contains(&b) {
             Some(b - b'A' + 10)
-        } else if b >= b'a' && b <= b'f' {
+        } else if (b'a'..=b'f').contains(&b) {
             Some(b - b'a' + 10)
         } else {
             None

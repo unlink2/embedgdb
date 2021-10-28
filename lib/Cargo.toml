@@ -6,6 +6,7 @@ description = ""
 license = "MIT"
 homepage = "https://github.com/unlink2/"
 readme = "../README.md"
+edition = "2021"
 
 [lib]
 name = "embedgdb"

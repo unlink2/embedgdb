@@ -5,7 +5,7 @@ authors = ["Lukas Krickl <lukas@krickl.dev>"]
 description = "Sample client"
 license = "MIT"
 homepage = "https://github.com/unlink2/"
-edition = "2018"
+edition = "2021"
 
 [[bin]]
 name = "embedgdb"
